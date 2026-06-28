@@ -1,51 +1,45 @@
-/* Screen Management */
+/* Core Utilities */
 .screen-hidden { display: none !important; }
-.screen-active { display: block; } /* or flex, handled by inline classes */
+.screen-active { display: block; }
 
-/* Target Selection Highlight */
-.player-target-item {
+/* Typography & Glows */
+.mafia-title {
+    background: linear-gradient(to bottom right, #ef4444, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));
+}
+
+.logo-anim {
+    animation: breathe 3s infinite ease-in-out;
+}
+
+@keyframes breathe {
+    0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(220,38,38,0.5)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 0 25px rgba(220,38,38,0.9)); }
+    100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(220,38,38,0.5)); }
+}
+
+/* Avatar Selection Styles */
+.avatar-btn {
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    border: 2px solid #374151; /* gray-700 */
+    cursor: pointer;
+    background-color: #1f2937; /* gray-800 */
     transition: all 0.2s ease;
 }
-.player-target-item.selected {
-    border-color: #4f46e5; /* Indigo */
-    background-color: #e0e7ff;
-    transform: scale(1.02);
+.avatar-btn:hover { border-color: #f59e0b; }
+.avatar-btn.selected {
+    border-color: #ef4444; /* red-500 */
+    background-color: #fca5a5;
+    transform: scale(1.15);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
 }
 
-/* Chai & Steam Animations */
-.chai-cup { position: relative; }
-.steam {
-    position: absolute;
-    width: 4px;
-    height: 15px;
-    background: #ccc;
-    border-radius: 50%;
-    opacity: 0;
-    top: -20px;
-    filter: blur(2px);
-    animation: rise 2s infinite ease-in;
-}
-.steam-1 { left: 30%; animation-delay: 0s; }
-.steam-2 { left: 60%; animation-delay: 0.5s; }
-
-@keyframes rise {
-    0% { transform: translateY(0) scale(1); opacity: 0.8; }
-    100% { transform: translateY(-40px) scale(2); opacity: 0; }
-}
-
-/* Khari Slide-in Animation */
-.khari-hidden {
-    opacity: 0;
-    transform: translateX(50px);
-    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-.khari-visible {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-/* Prevent text selection during hold-to-reveal */
-.select-none {
-    user-select: none;
-    -webkit-user-select: none;
-}
+/* Custom Scrollbar for Dark Mode */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1f2937; }
+::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #ef4444; }
