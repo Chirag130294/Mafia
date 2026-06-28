@@ -245,6 +245,9 @@ const GameEngine = {
     connectMQTT(mode, btnElement = null) {
         this.mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { reconnectPeriod: 3000 }); 
         
+        // NEW: Flag to detect if Safari is just waking up from sleep
+        let isFirstConnect = true;
+
         this.mqttClient.on('connect', () => {
             if (this.isHost) {
                 this.mqttClient.subscribe(`gujmafia/${this.roomId}/host`);
@@ -261,14 +264,18 @@ const GameEngine = {
                 document.getElementById('header-name').innerText = this.player.name;
                 document.getElementById('header-persona').innerText = this.player.persona !== 'Silent Observer' ? this.player.persona : '';
 
-                if (mode === 'PLAYER_NEW') {
+                // NEW LOGIC: Only send JOIN if it is truly their very first time connecting
+                if (isFirstConnect && mode === 'PLAYER_NEW') {
                     this.sendToHost({ type: 'JOIN', data: this.player });
                     this.showScreen('screen-lobby');
                     document.getElementById('room-badge').classList.remove('hidden');
                     document.getElementById('display-room-code').innerText = this.roomId;
                 } else {
+                    // If Safari wakes up from sleep, pull data silently WITHOUT resetting character
                     this.sendToHost({ type: 'RECONNECT_PULL', data: this.player });
                 }
+                
+                isFirstConnect = false; // Next time it connects, it knows it's a wake-up
             }
         });
 
@@ -280,7 +287,6 @@ const GameEngine = {
 
         this.mqttClient.on('error', () => { if(btnElement) { btnElement.innerHTML = 'JOIN'; btnElement.disabled = false; } });
     },
-
     sendToHost(msg) {
         if(this.mqttClient) this.mqttClient.publish(`gujmafia/${this.roomId}/host`, JSON.stringify({ peerId: this.myId, data: msg }));
     },
@@ -301,9 +307,19 @@ const GameEngine = {
     },
 
     // --- HOST LOGIC ENGINE ---
-    handleHostReceivesData(peerId, msg) {
-        if (msg.type === 'JOIN') { this.gameState.players[peerId] = msg.data; this.broadcastState(); }
-        if (msg.type === 'RECONNECT_PULL') { this.gameState.players[peerId] = msg.data; this.broadcastState(); } 
+handleHostReceivesData(peerId, msg) {
+        if (msg.type === 'JOIN') { 
+            // SECURITY LOCK: Only create the player if they don't exist, OR if we are still in the Lobby.
+            // This prevents a glitch from erasing a player's role mid-game.
+            if (!this.gameState.players[peerId] || this.gameState.phase === 'LOBBY') {
+                this.gameState.players[peerId] = msg.data; 
+            }
+            this.broadcastState(); 
+        }
+        if (msg.type === 'RECONNECT_PULL') { 
+            // When a phone wakes up, just broadcast the state so they catch up. DO NOT overwrite data.
+            this.broadcastState(); 
+        } 
         if (msg.type === 'NIGHT_ACTION') { this.gameState.nightInputs[peerId] = msg.data; this.checkNightProgress(); }
         if (msg.type === 'VOTE_ACTION') { this.gameState.voteInputs[peerId] = msg.data; this.checkVoteProgress(); }
     },
