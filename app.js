@@ -1,5 +1,6 @@
 let selectedAvatarSeed = '';
 
+// Dynamically generate 6 unique avatars (3 male-style, 3 female-style)
 function generateRandomAvatars() {
     const maleSeeds = ['Jack', 'Leo', 'Sam', 'Milo', 'Oliver', 'Max', 'Toby', 'Oscar'];
     const femaleSeeds = ['Mia', 'Zoe', 'Lily', 'Chloe', 'Ava', 'Ruby', 'Bella', 'Luna'];
@@ -32,7 +33,7 @@ function selectAvatar(element) {
     element.animate([ { transform: 'scale(1)' }, { transform: 'scale(1.3)' }, { transform: 'scale(1.25)' } ], { duration: 300, easing: 'ease-out', fill: 'forwards' });
 }
 
-// SLIDER LOGIC
+// SLIDE TO OVERRIDE LOGIC
 let slideIsDragging = false;
 let slideStartX = 0;
 const setupSlider = () => {
@@ -86,11 +87,10 @@ const GameEngine = {
     peer: null, connections: [], conn: null, 
     isHost: false, myId: null, roomId: null,
     
-    selectedTargetId: null, 
-    adminPendingPhase: null,
-    clientAnimFrame: null,
+    selectedTargetId: null, detectiveChecked: false,
+    adminPendingPhase: null, clientAnimFrame: null,
     
-    player: { id: null, name: '', persona: '', avatar: '', role: null, status: 'LOBBY' },
+    player: { id: null, name: '', persona: '', avatar: '', role: null, status: 'LOBBY', stats: { kills: 0, saves: 0, finds: 0, guesses: 0 } },
 
     gameState: {
         phase: 'LOBBY', 
@@ -123,7 +123,7 @@ const GameEngine = {
         btnReveal.addEventListener('mouseleave', hideRole);
     },
 
-    // --- HOST ---
+    // --- HOST NETWORKING ---
     createRoom() {
         const btn = document.getElementById('btn-create');
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> CREATING...';
@@ -159,7 +159,7 @@ const GameEngine = {
         });
     },
 
-    // --- PLAYER ---
+    // --- PLAYER NETWORKING ---
     joinRoom() {
         const name = document.getElementById('player-name').value.trim();
         const persona = document.getElementById('player-persona').value;
@@ -181,8 +181,7 @@ const GameEngine = {
             this.player = {
                 id: id, name: name, persona: persona,
                 avatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${selectedAvatarSeed}&backgroundColor=transparent`,
-                status: 'LOBBY', role: null,
-                stats: { kills: 0, saves: 0, finds: 0, guesses: 0 }
+                status: 'LOBBY', role: null, stats: { kills: 0, saves: 0, finds: 0, guesses: 0 }
             };
 
             this.conn = this.peer.connect('gujmafia-' + this.roomId);
@@ -202,7 +201,7 @@ const GameEngine = {
         this.peer.on('error', () => { alert("Room not found!"); btn.innerHTML = 'JOIN'; btn.disabled = false; });
     },
 
-    // --- LOGIC ENGINE ---
+    // --- HOST LOGIC ENGINE ---
     handleHostReceivesData(peerId, msg) {
         if (msg.type === 'JOIN') { this.gameState.players[peerId] = msg.data; this.broadcastState(); }
         if (msg.type === 'NIGHT_ACTION') { this.gameState.nightInputs[peerId] = msg.data; this.checkNightProgress(); }
@@ -237,7 +236,7 @@ const GameEngine = {
         pIds.forEach((id, index) => {
             this.gameState.players[id].role = assignedRoles[index];
             this.gameState.players[id].status = 'ALIVE';
-            this.gameState.players[id].stats = { kills: 0, saves: 0, finds: 0, guesses: 0 }; // Reset stats
+            this.gameState.players[id].stats = { kills: 0, saves: 0, finds: 0, guesses: 0 };
         });
 
         this.startNightPhase();
@@ -263,7 +262,6 @@ const GameEngine = {
         let mafiaTarget = null; let doctorSave = null;
         let mafiaIds = []; let doctorIds = []; let detInputs = {}; let vilInputs = {};
 
-        // Parse Inputs
         Object.entries(this.gameState.nightInputs).forEach(([peerId, targetId]) => {
             const role = this.gameState.players[peerId].role;
             if (role === 'Mafia') { mafiaTarget = targetId; mafiaIds.push(peerId); }
@@ -275,10 +273,10 @@ const GameEngine = {
         // Kills & Saves
         if (mafiaTarget && mafiaTarget !== 'SKIP') {
             if (mafiaTarget === doctorSave) {
-                doctorIds.forEach(id => this.gameState.players[id].stats.saves++); // Doctor gets point
+                doctorIds.forEach(id => this.gameState.players[id].stats.saves++); 
                 this.gameState.lastKilledName = "NO ONE"; 
             } else {
-                mafiaIds.forEach(id => this.gameState.players[id].stats.kills++); // Mafia gets point
+                mafiaIds.forEach(id => this.gameState.players[id].stats.kills++); 
                 this.gameState.players[mafiaTarget].status = 'DEAD';
                 this.gameState.lastKilledName = this.gameState.players[mafiaTarget].name;
             }
@@ -286,18 +284,12 @@ const GameEngine = {
             this.gameState.lastKilledName = "NO ONE"; 
         }
 
-        // Detective finds
+        // Detective finds & Villager guesses
         Object.entries(detInputs).forEach(([dId, tId]) => {
-            if(tId !== 'SKIP' && this.gameState.players[tId] && this.gameState.players[tId].role === 'Mafia') {
-                this.gameState.players[dId].stats.finds++;
-            }
+            if(tId !== 'SKIP' && this.gameState.players[tId] && this.gameState.players[tId].role === 'Mafia') this.gameState.players[dId].stats.finds++;
         });
-
-        // Villager guesses
         Object.entries(vilInputs).forEach(([vId, tId]) => {
-            if(tId !== 'SKIP' && tId === mafiaTarget) {
-                this.gameState.players[vId].stats.guesses++;
-            }
+            if(tId !== 'SKIP' && tId === mafiaTarget) this.gameState.players[vId].stats.guesses++;
         });
 
         if (this.checkWinCondition()) return;
@@ -333,7 +325,6 @@ const GameEngine = {
             tallies[voteId] = (tallies[voteId] || 0) + 1;
         });
 
-        // Compile Vote Breakdown for Pol Panchayat display
         let tallyDisplay = [];
         for (const [id, count] of Object.entries(tallies)) {
             tallyDisplay.push({ name: this.gameState.players[id].name, count: count });
@@ -351,7 +342,7 @@ const GameEngine = {
             this.gameState.players[votedOutId].status = 'DEAD';
             this.gameState.lastEliminatedName = this.gameState.players[votedOutId].name;
             
-            // RULE: Conceal Roles (Only Mafia is revealed)
+            // ROLE MASKING: Only reveal Mafia
             const actualRole = this.gameState.players[votedOutId].role;
             this.gameState.lastEliminatedRole = (actualRole === 'Mafia') ? 'Mafia' : 'Villager';
             
@@ -484,28 +475,64 @@ const GameEngine = {
         const list = document.getElementById('night-target-list');
         list.innerHTML = '';
         
-        // Randomize the target list
-        let aliveTargets = Object.values(this.gameState.players).filter(p => p.status === 'ALIVE' && p.id !== this.myId);
-        aliveTargets = this.shuffleArray(aliveTargets);
+        let aliveTargets = this.shuffleArray(Object.values(this.gameState.players).filter(p => p.status === 'ALIVE' && p.id !== this.myId));
 
         aliveTargets.forEach(p => {
             const li = document.createElement('li');
-            li.className = "list-item-btn p-4 border border-gray-600 rounded-xl cursor-pointer bg-gray-900 font-bold text-gray-300 text-lg shadow-sm";
+            li.className = "list-item-btn p-4 border border-gray-600 rounded-xl cursor-pointer bg-gray-900 font-bold text-gray-300 text-lg shadow-sm relative";
             li.innerText = p.name;
             li.onclick = () => {
                 document.querySelectorAll('#night-target-list .list-item-btn').forEach(el => el.classList.remove('selected'));
                 li.classList.add('selected');
                 this.selectedTargetId = p.id;
-                document.getElementById('btn-confirm-night').disabled = false;
-                document.getElementById('btn-confirm-night').classList.remove('opacity-50', 'cursor-not-allowed');
+                
+                const btnConfirm = document.getElementById('btn-confirm-night');
+                btnConfirm.disabled = false;
+                btnConfirm.classList.remove('opacity-50', 'cursor-not-allowed');
+
+                // Detective One-Time Intel Button Creation
+                const existingIntelBtn = document.getElementById('btn-check-intel');
+                if (existingIntelBtn) existingIntelBtn.remove(); // Remove if they click someone else
+
+                if (myData.role === 'Detective' && !this.detectiveChecked) {
+                    const btnIntel = document.createElement('button');
+                    btnIntel.id = 'btn-check-intel';
+                    btnIntel.className = "w-full bg-purple-700 hover:bg-purple-600 text-white p-3 rounded-xl font-black uppercase tracking-widest mt-4 shadow-lg transition-colors border-2 border-purple-500";
+                    btnIntel.innerText = "Check Intel (One-time use)";
+                    
+                    btnIntel.onclick = (e) => {
+                        e.stopPropagation(); // Prevent re-triggering the li click
+                        const isMafia = this.gameState.players[p.id].role === 'Mafia';
+                        li.style.transition = "border-color 0.5s, background-color 0.5s";
+                        li.style.borderColor = isMafia ? "#ef4444" : "#22c55e"; // Red or Green
+                        li.style.backgroundColor = isMafia ? "rgba(239, 68, 68, 0.2)" : "rgba(34, 197, 94, 0.2)";
+                        
+                        this.detectiveChecked = true;
+                        btnIntel.remove();
+                    };
+                    
+                    // Insert Intel button right above the Confirm button
+                    const nightScreen = document.getElementById('screen-night');
+                    nightScreen.insertBefore(btnIntel, btnConfirm);
+                }
             };
             list.appendChild(li);
         });
+        
+        // Reset Detective Check flag if new night
+        if(this.gameState.phase === 'NIGHT' && Object.keys(this.gameState.nightInputs).length === 0) {
+            this.detectiveChecked = false;
+        }
     },
 
     submitNightAction() {
         if (!this.selectedTargetId) return;
-        document.getElementById('screen-night').innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center"><div class="text-6xl text-blue-500 mb-6 animate-pulse"><i class="fa-solid fa-moon"></i></div><h2 class="text-2xl font-black tracking-widest text-gray-200">ACTION LOCKED</h2><p class="text-gray-500 text-xs mt-2 uppercase tracking-widest font-bold">Waiting for others...</p></div>`;
+        
+        // Clean up UI
+        const intelBtn = document.getElementById('btn-check-intel');
+        if (intelBtn) intelBtn.remove();
+        
+        document.getElementById('screen-night').innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center"><div class="text-6xl text-blue-500 mb-6 animate-pulse"><i class="fa-solid fa-check-double"></i></div><h2 class="text-2xl font-black tracking-widest text-gray-200">ACTION LOCKED</h2><p class="text-gray-500 text-xs mt-2 uppercase tracking-widest font-bold">Waiting for others...</p></div>`;
         this.conn.send({ type: 'NIGHT_ACTION', data: this.selectedTargetId });
     },
 
@@ -576,9 +603,7 @@ const GameEngine = {
         };
         list.appendChild(skipLi);
 
-        // Randomize voting list
-        let aliveTargets = Object.values(this.gameState.players).filter(p => p.status === 'ALIVE');
-        aliveTargets = this.shuffleArray(aliveTargets);
+        let aliveTargets = this.shuffleArray(Object.values(this.gameState.players).filter(p => p.status === 'ALIVE'));
 
         aliveTargets.forEach(p => {
             const li = document.createElement('li');
@@ -615,7 +640,6 @@ const GameEngine = {
         title.className = `text-4xl font-black tracking-widest mb-4 drop-shadow-lg transition-opacity duration-1000 delay-300 opacity-0 ${this.gameState.winnerColor}`;
         icon.innerHTML = `<i class="fa-solid ${this.gameState.winnerIcon}"></i>`;
         
-        // Pol Panchayat Vote Results
         if (this.gameState.lastVoteTallies && this.gameState.lastVoteTallies.length > 0 && this.gameState.phase === 'RESULT') {
             const tallyList = document.getElementById('vote-tallies-list');
             tallyList.innerHTML = '';
@@ -627,7 +651,6 @@ const GameEngine = {
             talliesCont.classList.add('hidden');
         }
 
-        // Elimination Reveal (with Role Hiding Rule applied in Logic)
         if (this.gameState.lastEliminatedName) {
             document.getElementById('result-subtitle').innerText = `${this.gameState.lastEliminatedName} was eliminated. They were the...`;
             document.getElementById('result-role-reveal').innerText = (this.gameState.lastEliminatedRole === 'Mafia') ? 'Mafia (Kaali Toli)' : 'Villager (Gamwalo)';
@@ -638,13 +661,11 @@ const GameEngine = {
             document.getElementById('result-subtitle').innerText = this.gameState.winnerMessage || "";
         }
 
-        // End Game Stats Logic
         if (this.gameState.phase === 'END') {
             endStatsCont.classList.remove('hidden');
             const slist = document.getElementById('end-stats-list');
             slist.innerHTML = '';
             
-            // Build Stats
             let bestKiller = {n:'', s:0}; let bestSaver = {n:'', s:0}; let bestDet = {n:'', s:0}; let bestGuess = {n:'', s:0};
             Object.values(this.gameState.players).forEach(p => {
                 if(p.stats.kills > bestKiller.s) { bestKiller = {n: p.name, s: p.stats.kills}; }
