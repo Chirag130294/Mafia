@@ -33,7 +33,18 @@ function selectAvatar(element) {
     element.animate([ { transform: 'scale(1)' }, { transform: 'scale(1.3)' }, { transform: 'scale(1.25)' } ], { duration: 300, easing: 'ease-out', fill: 'forwards' });
 }
 
-// SLIDE TO OVERRIDE LOGIC
+// iPhone/Mobile robust connection configuration
+const peerConfig = {
+    config: {
+        'iceServers': [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            { urls: 'stun:stun.cloudflare.com:3478' }
+        ]
+    }
+};
+
+// SLIDE TO OVERRIDE LOGIC with 1111 Admin PIN
 let slideIsDragging = false;
 let slideStartX = 0;
 const setupSlider = () => {
@@ -63,7 +74,15 @@ const setupSlider = () => {
             thumb.style.transform = `translateX(0px)`;
             prog.style.width = `0px`;
             thumb.style.transition = 'transform 0.3s ease';
-            GameEngine.submitAdminSlide();
+            
+            // Administrative PIN Check
+            const pin = prompt("Enter Admin PIN to authorize override:");
+            if (pin === "1111") {
+                GameEngine.submitAdminSlide();
+            } else {
+                alert("Unauthorized Action.");
+                GameEngine.cancelSlide();
+            }
         }
     };
 
@@ -88,7 +107,7 @@ const GameEngine = {
     isHost: false, myId: null, roomId: null,
     
     selectedTargetId: null, detectiveChecked: false,
-    adminPendingPhase: null, clientAnimFrame: null,
+    adminPendingPhase: null, clientAnimFrame: null, revealTimeout: null,
     
     player: { id: null, name: '', persona: '', avatar: '', role: null, status: 'LOBBY', stats: { kills: 0, saves: 0, finds: 0, guesses: 0 } },
 
@@ -132,7 +151,7 @@ const GameEngine = {
         this.isHost = true;
         this.roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
         
-        this.peer = new Peer('gujmafia-' + this.roomId, { config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }] } });
+        this.peer = new Peer('gujmafia-' + this.roomId, peerConfig);
         
         this.peer.on('open', (id) => {
             this.myId = id;
@@ -174,7 +193,7 @@ const GameEngine = {
 
         this.isHost = false;
         this.roomId = code;
-        this.peer = new Peer({ config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }] } }); 
+        this.peer = new Peer(peerConfig); 
 
         this.peer.on('open', (id) => {
             this.myId = id;
@@ -184,8 +203,21 @@ const GameEngine = {
                 status: 'LOBBY', role: null, stats: { kills: 0, saves: 0, finds: 0, guesses: 0 }
             };
 
-            this.conn = this.peer.connect('gujmafia-' + this.roomId);
-            let timeout = setTimeout(() => { alert("Connection timed out."); btn.innerHTML = 'JOIN'; btn.disabled = false; this.peer.destroy(); }, 7000);
+            document.getElementById('header-brand').classList.add('hidden');
+            document.getElementById('header-player-profile').classList.remove('hidden');
+            document.getElementById('header-avatar').src = this.player.avatar;
+            document.getElementById('header-name').innerText = this.player.name;
+            document.getElementById('header-persona').innerText = this.player.persona !== 'Silent Observer' ? this.player.persona : '';
+
+            // Added reliable flag for mobile data stabilization
+            this.conn = this.peer.connect('gujmafia-' + this.roomId, { reliable: true });
+            
+            let timeout = setTimeout(() => { 
+                alert("Connection timed out. If you are on an iPhone, please disable 'Hide IP Address' in Safari settings, or use Chrome."); 
+                btn.innerHTML = 'JOIN'; 
+                btn.disabled = false; 
+                this.peer.destroy(); 
+            }, 15000);
 
             this.conn.on('open', () => {
                 clearTimeout(timeout);
@@ -198,7 +230,7 @@ const GameEngine = {
             this.conn.on('data', (data) => this.handleClientReceivesData(data));
         });
 
-        this.peer.on('error', () => { alert("Room not found!"); btn.innerHTML = 'JOIN'; btn.disabled = false; });
+        this.peer.on('error', () => { alert("Room not found or connection blocked!"); btn.innerHTML = 'JOIN'; btn.disabled = false; });
     },
 
     // --- HOST LOGIC ENGINE ---
@@ -256,6 +288,7 @@ const GameEngine = {
     checkNightProgress() {
         const alivePlayers = Object.values(this.gameState.players).filter(p => p.status === 'ALIVE').length;
         if (Object.keys(this.gameState.nightInputs).length >= alivePlayers) this.processNightLogic();
+        else this.broadcastState(); // Refresh host screen list
     },
 
     processNightLogic() {
@@ -316,6 +349,7 @@ const GameEngine = {
     checkVoteProgress() {
         const alivePlayers = Object.values(this.gameState.players).filter(p => p.status === 'ALIVE').length;
         if (Object.keys(this.gameState.voteInputs).length >= alivePlayers) this.processVoteLogic();
+        else this.broadcastState(); 
     },
 
     processVoteLogic() {
@@ -417,11 +451,30 @@ const GameEngine = {
         if (msg.type !== 'STATE_UPDATE') return;
         this.gameState = msg.data;
         
+        // FAB visibility
+        const fab = document.getElementById('fab-role-reveal');
+        if(!this.isHost && ['NIGHT', 'DAY', 'VOTE'].includes(this.gameState.phase)) {
+            fab.classList.remove('hidden');
+        } else {
+            fab.classList.add('hidden');
+        }
+
         if (this.gameState.phase === 'LOBBY') this.renderLobby();
         if (this.gameState.phase === 'NIGHT') this.renderNight();
         if (this.gameState.phase === 'DAY') this.renderDay(msg.event);
         if (this.gameState.phase === 'VOTE') this.renderVote();
         if (this.gameState.phase === 'RESULT' || this.gameState.phase === 'END') this.renderResult();
+    },
+
+    tapRevealRole() {
+        const popup = document.getElementById('fab-role-popup');
+        const myData = this.gameState.players[this.myId];
+        if(!myData) return;
+        clearTimeout(this.revealTimeout);
+        const mapRole = { 'Mafia': 'Mafia (Kaali Toli)', 'Doctor': 'Doctor (Vaidya)', 'Detective': 'Detective (Batmi-dar)', 'Villager': 'Villager (Gamwalo)' };
+        popup.innerText = mapRole[myData.role] || myData.role;
+        popup.classList.remove('hidden');
+        this.revealTimeout = setTimeout(() => { popup.classList.add('hidden'); }, 1000);
     },
 
     renderLobby() {
@@ -444,26 +497,42 @@ const GameEngine = {
     renderNight() {
         this.showScreen('screen-night');
         document.getElementById('khari-plate').classList.remove('khari-visible'); 
-        this.selectedTargetId = null; 
         
+        const actionPanel = document.getElementById('night-action-panel');
+        const lockedPanel = document.getElementById('night-locked-panel');
+        actionPanel.classList.remove('hidden');
+        lockedPanel.classList.add('hidden');
+        
+        this.selectedTargetId = null; 
+        const list = document.getElementById('night-target-list');
+        list.innerHTML = '';
+
         if (this.isHost) {
-            document.getElementById('btn-reveal-role').classList.add('hidden');
             document.getElementById('night-instructions').classList.add('hidden');
             document.getElementById('btn-confirm-night').classList.add('hidden');
-            document.getElementById('night-target-list').innerHTML = `<li class="text-center p-6 text-gray-500 font-mono text-sm tracking-widest uppercase">Waiting for player actions...<br><br><button onclick="GameEngine.forcePhaseAdmin('DAY')" class="mt-6 px-6 py-3 bg-red-900 border border-red-600 text-white rounded-lg shadow-lg font-bold">Force Next</button></li>`;
+            
+            Object.values(this.gameState.players).filter(p => p.status === 'ALIVE').forEach(p => {
+                const hasActed = !!this.gameState.nightInputs[p.id];
+                list.innerHTML += `<li class="p-3 mb-2 border border-gray-700 rounded-xl bg-gray-800 flex justify-between items-center shadow">
+                    <span class="text-white font-bold">${p.name}</span>
+                    <span class="${hasActed ? 'text-green-500' : 'text-yellow-500'} text-xs font-black tracking-widest uppercase">${hasActed ? 'LOCKED IN' : 'THINKING...'}</span>
+                </li>`;
+            });
+            list.innerHTML += `<li class="mt-6"><button onclick="GameEngine.forcePhaseAdmin('DAY')" class="w-full px-6 py-4 bg-red-900 border border-red-600 text-white rounded-xl shadow-lg font-black tracking-widest uppercase">Force Next (Override)</button></li>`;
             return;
         }
 
         const myData = this.gameState.players[this.myId];
-        if (myData.status === 'DEAD') {
-            document.getElementById('btn-reveal-role').classList.add('hidden');
-            document.getElementById('night-instructions').classList.add('hidden');
-            document.getElementById('btn-confirm-night').classList.add('hidden');
-            document.getElementById('night-target-list').innerHTML = `<li class="text-center p-6 text-red-500 font-black tracking-widest">YOU ARE DEAD<br><span class="text-xs text-gray-500">Spectating...</span></li>`;
+        
+        if (myData.status === 'DEAD' || this.gameState.nightInputs[this.myId]) {
+            actionPanel.classList.add('hidden');
+            lockedPanel.classList.remove('hidden');
+            if (myData.status === 'DEAD') {
+                lockedPanel.innerHTML = `<div class="text-6xl text-red-500 mb-6"><i class="fa-solid fa-skull"></i></div><h2 class="text-2xl font-black tracking-widest text-red-500">YOU ARE DEAD</h2><p class="text-gray-500 text-xs mt-2 uppercase tracking-widest font-bold">Spectating...</p>`;
+            }
             return;
         }
 
-        document.getElementById('btn-reveal-role').classList.remove('hidden');
         document.getElementById('night-instructions').classList.remove('hidden');
         document.getElementById('btn-confirm-night').classList.remove('hidden');
         document.getElementById('btn-confirm-night').disabled = true;
@@ -472,14 +541,11 @@ const GameEngine = {
         const mapRole = { 'Mafia': 'Mafia (Kaali Toli)', 'Doctor': 'Doctor (Vaidya)', 'Detective': 'Detective (Batmi-dar)', 'Villager': 'Villager (Gamwalo)' };
         document.getElementById('secret-role-display').innerText = mapRole[myData.role] || myData.role;
 
-        const list = document.getElementById('night-target-list');
-        list.innerHTML = '';
-        
         let aliveTargets = this.shuffleArray(Object.values(this.gameState.players).filter(p => p.status === 'ALIVE' && p.id !== this.myId));
 
         aliveTargets.forEach(p => {
             const li = document.createElement('li');
-            li.className = "list-item-btn p-4 border border-gray-600 rounded-xl cursor-pointer bg-gray-900 font-bold text-gray-300 text-lg shadow-sm relative";
+            li.className = "list-item-btn p-4 border border-gray-600 rounded-xl cursor-pointer bg-gray-900 font-bold text-gray-300 text-lg shadow-sm";
             li.innerText = p.name;
             li.onclick = () => {
                 document.querySelectorAll('#night-target-list .list-item-btn').forEach(el => el.classList.remove('selected'));
@@ -489,37 +555,10 @@ const GameEngine = {
                 const btnConfirm = document.getElementById('btn-confirm-night');
                 btnConfirm.disabled = false;
                 btnConfirm.classList.remove('opacity-50', 'cursor-not-allowed');
-
-                // Detective One-Time Intel Button Creation
-                const existingIntelBtn = document.getElementById('btn-check-intel');
-                if (existingIntelBtn) existingIntelBtn.remove(); // Remove if they click someone else
-
-                if (myData.role === 'Detective' && !this.detectiveChecked) {
-                    const btnIntel = document.createElement('button');
-                    btnIntel.id = 'btn-check-intel';
-                    btnIntel.className = "w-full bg-purple-700 hover:bg-purple-600 text-white p-3 rounded-xl font-black uppercase tracking-widest mt-4 shadow-lg transition-colors border-2 border-purple-500";
-                    btnIntel.innerText = "Check Intel (One-time use)";
-                    
-                    btnIntel.onclick = (e) => {
-                        e.stopPropagation(); // Prevent re-triggering the li click
-                        const isMafia = this.gameState.players[p.id].role === 'Mafia';
-                        li.style.transition = "border-color 0.5s, background-color 0.5s";
-                        li.style.borderColor = isMafia ? "#ef4444" : "#22c55e"; // Red or Green
-                        li.style.backgroundColor = isMafia ? "rgba(239, 68, 68, 0.2)" : "rgba(34, 197, 94, 0.2)";
-                        
-                        this.detectiveChecked = true;
-                        btnIntel.remove();
-                    };
-                    
-                    // Insert Intel button right above the Confirm button
-                    const nightScreen = document.getElementById('screen-night');
-                    nightScreen.insertBefore(btnIntel, btnConfirm);
-                }
             };
             list.appendChild(li);
         });
         
-        // Reset Detective Check flag if new night
         if(this.gameState.phase === 'NIGHT' && Object.keys(this.gameState.nightInputs).length === 0) {
             this.detectiveChecked = false;
         }
@@ -528,12 +567,40 @@ const GameEngine = {
     submitNightAction() {
         if (!this.selectedTargetId) return;
         
-        // Clean up UI
-        const intelBtn = document.getElementById('btn-check-intel');
-        if (intelBtn) intelBtn.remove();
+        const myData = this.gameState.players[this.myId];
+        const actionPanel = document.getElementById('night-action-panel');
+        const btnConfirm = document.getElementById('btn-confirm-night');
         
-        document.getElementById('screen-night').innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center"><div class="text-6xl text-blue-500 mb-6 animate-pulse"><i class="fa-solid fa-check-double"></i></div><h2 class="text-2xl font-black tracking-widest text-gray-200">ACTION LOCKED</h2><p class="text-gray-500 text-xs mt-2 uppercase tracking-widest font-bold">Waiting for others...</p></div>`;
-        this.conn.send({ type: 'NIGHT_ACTION', data: this.selectedTargetId });
+        btnConfirm.disabled = true;
+        btnConfirm.classList.add('opacity-50', 'cursor-not-allowed');
+        
+        let popupHtml = '';
+        let borderClass = 'border-gray-600';
+        
+        // Small Discrete Popup implementation
+        if (myData.role === 'Detective') {
+            const isMafia = this.gameState.players[this.selectedTargetId].role === 'Mafia';
+            const resultText = isMafia ? "MAFIA" : "VILLAGER";
+            const colorClass = isMafia ? "text-red-500" : "text-green-500";
+            borderClass = isMafia ? "border-red-500" : "border-green-500";
+            popupHtml = `<span class="text-sm font-black tracking-widest ${colorClass}">RESULT: ${resultText}</span>`;
+        } else {
+            popupHtml = `<span class="text-sm font-bold tracking-widest text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i> LOCKING...</span>`;
+        }
+
+        const popup = document.createElement('div');
+        popup.className = `absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-gray-900 border-2 ${borderClass} px-6 py-2 rounded-xl shadow-2xl z-50 whitespace-nowrap transition-all`;
+        popup.innerHTML = popupHtml;
+        
+        actionPanel.classList.add('relative');
+        actionPanel.appendChild(popup);
+        
+        setTimeout(() => {
+            popup.remove();
+            document.getElementById('night-action-panel').classList.add('hidden');
+            document.getElementById('night-locked-panel').classList.remove('hidden');
+            this.conn.send({ type: 'NIGHT_ACTION', data: this.selectedTargetId });
+        }, 2000);
     },
 
     renderDay(event) {
@@ -569,18 +636,37 @@ const GameEngine = {
 
     renderVote() {
         this.showScreen('screen-vote');
+        
+        const actionPanel = document.getElementById('vote-action-panel');
+        const lockedPanel = document.getElementById('vote-locked-panel');
+        actionPanel.classList.remove('hidden');
+        lockedPanel.classList.add('hidden');
+        
         this.selectedTargetId = null; 
+        const list = document.getElementById('vote-target-list');
+        list.innerHTML = '';
         
         if (this.isHost) {
             document.getElementById('btn-confirm-vote').classList.add('hidden');
-            document.getElementById('vote-target-list').innerHTML = `<li class="text-center p-6 text-gray-500 font-mono text-sm tracking-widest uppercase">Waiting for votes...<br><br><button onclick="GameEngine.forcePhaseAdmin('RESULT')" class="mt-6 px-6 py-3 bg-orange-900 border border-orange-600 text-white rounded-lg shadow-lg font-bold">Force Next</button></li>`;
+            Object.values(this.gameState.players).filter(p => p.status === 'ALIVE').forEach(p => {
+                const hasVoted = !!this.gameState.voteInputs[p.id];
+                list.innerHTML += `<li class="p-3 mb-2 border border-gray-700 rounded-xl bg-gray-800 flex justify-between items-center shadow">
+                    <span class="text-white font-bold">${p.name}</span>
+                    <span class="${hasVoted ? 'text-green-500' : 'text-yellow-500'} text-xs font-black tracking-widest uppercase">${hasVoted ? 'VOTED' : 'DECIDING...'}</span>
+                </li>`;
+            });
+            list.innerHTML += `<li class="mt-6"><button onclick="GameEngine.forcePhaseAdmin('RESULT')" class="w-full px-6 py-4 bg-orange-900 border border-orange-600 text-white rounded-xl shadow-lg font-black tracking-widest uppercase">Force Next (Override)</button></li>`;
             return;
         }
 
         const myData = this.gameState.players[this.myId];
-        if (myData.status === 'DEAD') {
-            document.getElementById('btn-confirm-vote').classList.add('hidden');
-            document.getElementById('vote-target-list').innerHTML = `<li class="text-center p-6 text-red-500 font-black tracking-widest">YOU ARE DEAD<br><span class="text-xs text-gray-500">Watch the drama unfold...</span></li>`;
+        
+        if (myData.status === 'DEAD' || this.gameState.voteInputs[this.myId]) {
+            actionPanel.classList.add('hidden');
+            lockedPanel.classList.remove('hidden');
+            if (myData.status === 'DEAD') {
+                lockedPanel.innerHTML = `<div class="text-6xl text-red-500 mb-6"><i class="fa-solid fa-skull"></i></div><h2 class="text-2xl font-black tracking-widest text-red-500">YOU ARE DEAD</h2><p class="text-gray-500 text-xs mt-2 uppercase tracking-widest font-bold">Spectating...</p>`;
+            }
             return;
         }
 
@@ -588,9 +674,6 @@ const GameEngine = {
         document.getElementById('btn-confirm-vote').disabled = true;
         document.getElementById('btn-confirm-vote').classList.add('opacity-50', 'cursor-not-allowed');
 
-        const list = document.getElementById('vote-target-list');
-        list.innerHTML = '';
-        
         let skipLi = document.createElement('li');
         skipLi.className = "list-item-btn p-4 border border-gray-600 rounded-xl cursor-pointer bg-gray-900 font-bold text-gray-400 text-lg shadow-sm mb-4";
         skipLi.innerText = "SKIP VOTE";
@@ -622,7 +705,8 @@ const GameEngine = {
 
     submitVote() {
         if (!this.selectedTargetId) return;
-        document.getElementById('screen-vote').innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center"><div class="text-6xl text-orange-500 mb-6"><i class="fa-solid fa-envelope-circle-check"></i></div><h2 class="text-2xl font-black tracking-widest text-gray-200">VOTE CAST</h2></div>`;
+        document.getElementById('vote-action-panel').classList.add('hidden');
+        document.getElementById('vote-locked-panel').classList.remove('hidden');
         this.conn.send({ type: 'VOTE_ACTION', data: this.selectedTargetId });
     },
 
@@ -652,9 +736,7 @@ const GameEngine = {
         }
 
         if (this.gameState.lastEliminatedName) {
-            document.getElementById('result-subtitle').innerText = `${this.gameState.lastEliminatedName} was eliminated. They were the...`;
-            document.getElementById('result-role-reveal').innerText = (this.gameState.lastEliminatedRole === 'Mafia') ? 'Mafia (Kaali Toli)' : 'Villager (Gamwalo)';
-            document.getElementById('result-role-reveal').className = `text-2xl font-black tracking-widest mt-2 ${this.gameState.lastEliminatedRole === 'Mafia' ? 'text-red-500' : 'text-blue-400'}`;
+            document.getElementById('result-subtitle').innerHTML = `<span class="text-2xl font-black text-white">${this.gameState.lastEliminatedName} / ${this.gameState.lastEliminatedRole === 'Mafia' ? 'Mafia' : 'Villager'}</span><br>was eliminated.`;
             reveal.classList.remove('hidden');
         } else {
             reveal.classList.add('hidden');
