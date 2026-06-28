@@ -67,17 +67,22 @@ const AvatarEngine = {
     updateView() {
         const len = this.seeds.length;
         this.elements.forEach((el, i) => {
-            el.className = 'carousel-avatar carousel-out'; // Reset all to invisible
+            // Strip all position/hidden classes first, leave only the base class
+            el.className = 'carousel-avatar'; 
             
             let diff = i - this.currentIndex;
+            
+            // This math allows the carousel to loop infinitely in a circle
             if (diff > len / 2) diff -= len;
             if (diff < -len / 2) diff += len;
 
+            // Apply the exact position, and ONLY hide the ones in the back
             if (diff === 0) el.classList.add('carousel-pos-0');
             else if (diff === 1) el.classList.add('carousel-pos-1');
             else if (diff === -1) el.classList.add('carousel-pos-minus-1');
             else if (diff === 2) el.classList.add('carousel-pos-2');
             else if (diff === -2) el.classList.add('carousel-pos-minus-2');
+            else el.classList.add('carousel-out'); 
         });
     },
 
