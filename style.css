@@ -1,5 +1,7 @@
+/* Typography & Base */
 body { font-family: 'Montserrat', sans-serif; }
 
+/* Subtle dark pattern for background */
 .bg-pattern {
     background-color: #111827;
     background-image: radial-gradient(#ef4444 0.5px, transparent 0.5px), radial-gradient(#ef4444 0.5px, #111827 0.5px);
@@ -8,9 +10,11 @@ body { font-family: 'Montserrat', sans-serif; }
     background-attachment: fixed;
 }
 
+/* Screen Management */
 .screen-hidden { display: none !important; }
 .screen-active { display: flex; flex-direction: column; }
 
+/* Glowing Text FX */
 .mafia-title {
     background: linear-gradient(to bottom right, #ef4444, #f59e0b);
     -webkit-background-clip: text;
@@ -18,6 +22,7 @@ body { font-family: 'Montserrat', sans-serif; }
     filter: drop-shadow(0px 4px 10px rgba(220,38,38,0.3));
 }
 
+/* Logo Breathe Animation */
 .logo-anim { animation: breathe 3s infinite ease-in-out; }
 @keyframes breathe {
     0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(220,38,38,0.5)); }
@@ -25,6 +30,7 @@ body { font-family: 'Montserrat', sans-serif; }
     100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(220,38,38,0.5)); }
 }
 
+/* Avatar Selection */
 .avatar-btn {
     width: 60px; height: 60px;
     border-radius: 50%;
@@ -41,6 +47,7 @@ body { font-family: 'Montserrat', sans-serif; }
     z-index: 10;
 }
 
+/* List Items (Target & Voting) */
 .list-item-btn { transition: all 0.2s ease; }
 .list-item-btn.selected {
     transform: scale(1.02);
@@ -48,7 +55,7 @@ body { font-family: 'Montserrat', sans-serif; }
     background-color: rgba(220, 38, 38, 0.2) !important;
 }
 
-/* Chai Logic Animations */
+/* Chai Cup Logic Animations */
 .steam {
     position: absolute; width: 6px; height: 25px;
     background: rgba(255, 255, 255, 0.5);
@@ -71,13 +78,16 @@ body { font-family: 'Montserrat', sans-serif; }
 }
 .khari-visible { opacity: 1; transform: translateX(0) rotate(0deg); }
 
+/* Utilities */
 .select-none { user-select: none; -webkit-user-select: none; }
 .letter-spacing-wide { letter-spacing: 0.2em; }
 
+/* Scrollbars */
 .custom-scroll::-webkit-scrollbar { width: 6px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
 .custom-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
 .custom-scroll::-webkit-scrollbar-thumb:hover { background: #ef4444; }
 
+/* Result Animations */
 .scale-in { transform: scale(1) !important; }
 .fade-in { opacity: 1 !important; }
