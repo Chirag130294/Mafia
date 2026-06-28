@@ -6,7 +6,6 @@
     <title>MAFIA - Gujarati Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- MIGRATED TO MQTT FOR IPHONE FIREWALL BYPASS -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
@@ -29,9 +28,13 @@
             </div>
         </div>
         
-        <div id="room-badge" class="hidden bg-gray-800 px-3 py-1 rounded-full text-sm font-mono border border-gray-700 shadow-inner flex flex-col items-end">
-            <span class="text-[8px] text-gray-400 uppercase tracking-widest">Room</span>
-            <span id="display-room-code" class="text-yellow-500 font-bold leading-tight"></span>
+        <div class="flex items-center gap-3">
+            <div id="room-badge" class="hidden bg-gray-800 px-3 py-1 rounded-full text-sm font-mono border border-gray-700 shadow-inner flex flex-col items-end">
+                <span class="text-[8px] text-gray-400 uppercase tracking-widest">Room</span>
+                <span id="display-room-code" class="text-yellow-500 font-bold leading-tight"></span>
+            </div>
+            <!-- Host Gear Icon -->
+            <button id="btn-host-settings" onclick="GameEngine.openHostSettings()" class="hidden text-gray-400 hover:text-white transition-colors text-xl p-2"><i class="fa-solid fa-gear"></i></button>
         </div>
     </header>
 
@@ -40,8 +43,8 @@
         <!-- RECONNECT NOTIFICATION -->
         <div id="reconnect-banner" class="hidden w-full max-w-md mb-4 bg-blue-900/80 border border-blue-500 p-4 rounded-xl shadow-xl flex justify-between items-center backdrop-blur z-50">
             <div>
-                <p class="text-xs text-blue-300 font-bold uppercase tracking-widest">Saved Session Found</p>
-                <p class="text-sm font-black text-white" id="reconnect-text">Reconnect to game?</p>
+                <p class="text-xs text-blue-300 font-bold uppercase tracking-widest">Saved Session</p>
+                <p class="text-sm font-black text-white" id="reconnect-text">Reconnect?</p>
             </div>
             <div class="flex gap-2">
                 <button onclick="GameEngine.clearSession()" class="bg-gray-800 text-gray-400 px-3 py-2 rounded font-bold text-xs">Clear</button>
@@ -78,16 +81,14 @@
             <div class="bg-gray-800/80 backdrop-blur p-6 rounded-2xl border border-gray-700 shadow-2xl">
                 <input type="text" id="player-name" placeholder="Your Name (Required)" class="w-full p-4 bg-gray-900 border border-gray-600 rounded-xl mb-4 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 font-bold transition-colors text-center" maxlength="12">
                 
-                <p class="text-xs text-gray-400 mb-2 uppercase tracking-widest font-bold text-center">Select Avatar</p>
+                <p class="text-xs text-gray-400 mb-2 uppercase tracking-widest font-bold text-center">Slide Avatar <i class="fa-solid fa-arrows-left-right ml-1"></i></p>
                 
-                <!-- DYNAMIC AVATAR CAROUSEL -->
-                <div id="avatar-slider-container" class="relative w-full h-24 flex items-center justify-center overflow-hidden mb-5">
-                    <button onclick="AvatarEngine.slide(-1)" class="absolute left-0 z-40 bg-gray-800/80 text-white w-8 h-8 rounded-full border border-gray-600"><i class="fa-solid fa-chevron-left"></i></button>
+                <!-- DYNAMIC GLOBE AVATAR CAROUSEL -->
+                <div id="avatar-slider-container" class="relative w-full h-24 flex items-center justify-center overflow-hidden mb-5 cursor-grab active:cursor-grabbing">
                     <div id="carousel-track" class="relative w-full h-full flex items-center justify-center"></div>
-                    <button onclick="AvatarEngine.slide(1)" class="absolute right-0 z-40 bg-gray-800/80 text-white w-8 h-8 rounded-full border border-gray-600"><i class="fa-solid fa-chevron-right"></i></button>
                 </div>
 
-                <select id="player-persona" class="w-full p-4 bg-gray-900 border border-gray-600 rounded-xl mb-5 text-gray-300 focus:outline-none focus:border-red-500 cursor-pointer font-bold">
+                <select id="player-persona" class="w-full p-4 bg-gray-900 border border-gray-600 rounded-xl mb-5 text-gray-300 focus:outline-none focus:border-red-500 cursor-pointer font-bold text-center">
                     <option value="Silent Observer">-- Select Persona --</option>
                     <option value="The Kanjus Seth">The Kanjus Seth</option>
                     <option value="The Gossip Queen">The Gossip Queen</option>
@@ -112,7 +113,7 @@
 
         <!-- SCREEN 2: LOBBY -->
         <div id="screen-lobby" class="screen-hidden w-full max-w-md mx-auto flex flex-col h-full">
-            <div id="host-header" class="hidden bg-gray-800/90 p-4 rounded-2xl border border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.2)] mb-4 flex flex-col items-center gap-2 mt-2 text-center">
+            <div id="host-header-panel" class="hidden bg-gray-800/90 p-4 rounded-2xl border border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.2)] mb-4 flex flex-col items-center gap-2 mt-2 text-center">
                 <h2 id="lobby-welcome-msg" class="text-lg font-black text-white tracking-widest uppercase mb-2"></h2>
                 <div class="flex items-center gap-4 w-full">
                     <div class="bg-white p-2 rounded-xl shadow-xl flex-shrink-0">
@@ -120,7 +121,7 @@
                     </div>
                     <div class="flex-grow text-left">
                         <p class="text-gray-400 uppercase tracking-widest text-[10px] font-bold">Scan or enter code</p>
-                        <h1 class="text-5xl font-mono font-black text-red-500 tracking-widest drop-shadow-md" id="lobby-room-code">----</h1>
+                        <h1 class="text-5xl font-mono font-black text-red-500 tracking-widest drop-shadow-md" id="lobby-room-code-display">----</h1>
                     </div>
                 </div>
             </div>
@@ -130,9 +131,9 @@
                 <span class="bg-red-900/50 text-red-400 px-3 py-1 rounded-full text-sm font-bold border border-red-800"><span id="player-count">0</span> JOINED</span>
             </div>
             
-            <ul id="player-list" class="space-y-3 mb-6 flex-grow overflow-y-auto pr-2 custom-scroll pb-20"></ul>
+            <ul id="player-list" class="space-y-3 mb-6 flex-grow overflow-y-auto pr-2 custom-scroll pb-24"></ul>
 
-            <div id="host-lobby-controls" class="hidden absolute bottom-4 left-4 right-4 bg-gray-900/90 p-4 rounded-t-2xl z-20">
+            <div id="host-lobby-controls" class="hidden absolute bottom-4 left-4 right-4 bg-gray-900/90 p-4 rounded-t-2xl z-20 shadow-2xl">
                 <button onclick="GameEngine.startGame()" class="w-full bg-gradient-to-r from-red-700 to-red-500 text-white p-5 rounded-xl font-black tracking-widest shadow-[0_0_20px_rgba(220,38,38,0.4)] active:scale-95 transition-all text-xl">START GAME</button>
             </div>
         </div>
@@ -195,7 +196,7 @@
             <div id="host-override-panel" class="hidden bg-gray-800/90 p-4 rounded-2xl border border-gray-700 shadow-xl mx-4">
                 <div class="flex gap-3">
                     <button onclick="GameEngine.addTime()" class="flex-1 bg-yellow-600/20 border border-yellow-600 text-yellow-500 hover:bg-yellow-600 hover:text-gray-900 p-3 rounded-xl font-bold tracking-wide transition-all">+30s Time</button>
-                    <button onclick="GameEngine.forcePhaseAdmin('VOTE')" class="flex-1 bg-red-900/40 border border-red-600 text-red-500 hover:bg-red-600 hover:text-white p-3 rounded-xl font-bold tracking-wide transition-all"><i class="fa-solid fa-gavel"></i> Force Vote</button>
+                    <button onclick="GameEngine.requestAdminAction('ADMIN_FORCE_VOTE')" class="flex-1 bg-red-900/40 border border-red-600 text-red-500 hover:bg-red-600 hover:text-white p-3 rounded-xl font-bold tracking-wide transition-all"><i class="fa-solid fa-gavel"></i> Force Vote</button>
                 </div>
             </div>
         </div>
@@ -242,6 +243,9 @@
                 <ul id="end-stats-list" class="space-y-3 text-sm text-left text-gray-300 font-bold"></ul>
             </div>
             
+            <!-- SHARE BUTTON -->
+            <button id="btn-share-stats" onclick="GameEngine.shareStats()" class="hidden w-full max-w-[250px] bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-xl font-black tracking-widest shadow-[0_0_15px_rgba(168,85,247,0.4)] active:scale-95 transition-all mb-4 text-sm"><i class="fa-solid fa-share-nodes mr-2"></i> SHARE STATS</button>
+            
             <div id="host-result-controls" class="hidden w-full px-6 mt-auto">
                 <button onclick="GameEngine.nextRoundOrEnd()" class="w-full bg-gray-100 text-gray-900 p-5 rounded-xl font-black tracking-widest shadow-xl active:scale-95 transition-all text-lg hover:bg-gray-300">CONTINUE</button>
             </div>
@@ -257,11 +261,24 @@
         </button>
     </div>
 
+    <!-- HOST SETTINGS MODAL -->
+    <div id="host-settings-modal" class="hidden fixed inset-0 bg-black/85 flex items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-900 p-6 rounded-2xl shadow-2xl border border-gray-700 w-80 text-center">
+            <h3 class="text-lg font-black tracking-widest text-white mb-6 uppercase border-b border-gray-700 pb-3"><i class="fa-solid fa-sliders text-red-500 mr-2"></i> Host Settings</h3>
+            <div class="space-y-4 mb-6">
+                <button onclick="GameEngine.requestAdminAction('RESET_ROUND')" class="w-full bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-xl font-bold transition-colors shadow-lg border border-gray-600">Restart Current Round</button>
+                <button onclick="GameEngine.requestAdminAction('RESET_GAME')" class="w-full bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-xl font-bold transition-colors shadow-lg border border-gray-600">Back to Lobby (Reset)</button>
+                <button onclick="GameEngine.requestAdminAction('END_SESSION')" class="w-full bg-red-900/40 hover:bg-red-600 border border-red-600 text-red-500 hover:text-white p-4 rounded-xl font-bold transition-colors shadow-lg">End Session & Show Stats</button>
+            </div>
+            <button onclick="document.getElementById('host-settings-modal').classList.add('hidden')" class="w-full bg-transparent text-gray-500 hover:text-white p-2 rounded-xl font-bold tracking-widest">CLOSE</button>
+        </div>
+    </div>
+
     <!-- Slide to Override Modal -->
-    <div id="slide-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm">
-        <div class="bg-gray-900 p-8 rounded-2xl shadow-2xl border border-red-600 text-center w-80">
+    <div id="slide-modal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center z-50 backdrop-blur-md">
+        <div class="bg-gray-900 p-8 rounded-2xl shadow-2xl border border-red-600 text-center w-80 relative">
             <i class="fa-solid fa-shield-halved text-red-500 text-4xl mb-4"></i>
-            <h3 class="text-sm font-black tracking-widest text-gray-400 mb-8 uppercase">Admin Override</h3>
+            <h3 id="slide-modal-title" class="text-sm font-black tracking-widest text-gray-400 mb-8 uppercase">Confirm Action</h3>
             
             <div id="slide-track" class="bg-gray-800 border border-gray-700 rounded-full h-14 relative flex items-center px-1 overflow-hidden shadow-inner mb-6">
                 <div id="slide-thumb" class="bg-gradient-to-r from-red-600 to-red-500 w-12 h-12 rounded-full cursor-grab active:cursor-grabbing flex justify-center items-center absolute left-1 shadow-lg text-white z-10 transition-transform">
