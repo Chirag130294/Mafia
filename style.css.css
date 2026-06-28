@@ -1,0 +1,51 @@
+/* Screen Management */
+.screen-hidden { display: none !important; }
+.screen-active { display: block; } /* or flex, handled by inline classes */
+
+/* Target Selection Highlight */
+.player-target-item {
+    transition: all 0.2s ease;
+}
+.player-target-item.selected {
+    border-color: #4f46e5; /* Indigo */
+    background-color: #e0e7ff;
+    transform: scale(1.02);
+}
+
+/* Chai & Steam Animations */
+.chai-cup { position: relative; }
+.steam {
+    position: absolute;
+    width: 4px;
+    height: 15px;
+    background: #ccc;
+    border-radius: 50%;
+    opacity: 0;
+    top: -20px;
+    filter: blur(2px);
+    animation: rise 2s infinite ease-in;
+}
+.steam-1 { left: 30%; animation-delay: 0s; }
+.steam-2 { left: 60%; animation-delay: 0.5s; }
+
+@keyframes rise {
+    0% { transform: translateY(0) scale(1); opacity: 0.8; }
+    100% { transform: translateY(-40px) scale(2); opacity: 0; }
+}
+
+/* Khari Slide-in Animation */
+.khari-hidden {
+    opacity: 0;
+    transform: translateX(50px);
+    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.khari-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Prevent text selection during hold-to-reveal */
+.select-none {
+    user-select: none;
+    -webkit-user-select: none;
+}
