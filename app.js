@@ -1,38 +1,62 @@
-// --- AVATAR CAROUSEL ENGINE ---
+// --- GLOBE-ROLLING AVATAR CAROUSEL ENGINE ---
 const AvatarEngine = {
     seeds: [
-        'Jack', 'Leo', 'Sam', 'Milo', 'Oliver', 'Max', 'Toby', 'Oscar', // Males
-        'Mia', 'Zoe', 'Lily', 'Chloe', 'Ava', 'Ruby', 'Bella'          // Females
+        'Jack', 'Leo', 'Sam', 'Milo', 'Oliver', 'Max', 'Toby', 'Oscar',
+        'Mia', 'Zoe', 'Lily', 'Chloe', 'Ava', 'Ruby', 'Bella'
     ],
     elements: [],
     currentIndex: 0,
-    touchStartX: 0,
     
     init() {
-        // Shuffle seeds once on load
         this.seeds = this.seeds.sort(() => 0.5 - Math.random());
         const track = document.getElementById('carousel-track');
         track.innerHTML = '';
         
-        this.seeds.forEach((seed, index) => {
+        this.seeds.forEach((seed) => {
             const img = document.createElement('img');
             img.src = `https://api.dicebear.com/9.x/avataaars/svg?seed=${seed}&backgroundColor=transparent`;
-            img.className = `carousel-avatar carousel-hidden`;
-            img.onclick = () => this.goToIndex(index);
+            img.className = `carousel-avatar carousel-out`; // Safely omit the cascading bug
             track.appendChild(img);
             this.elements.push(img);
         });
 
-        // Setup swipe listeners
-        const container = document.getElementById('avatar-slider-container');
-        container.addEventListener('touchstart', e => this.touchStartX = e.changedTouches[0].screenX, {passive: true});
-        container.addEventListener('touchend', e => {
-            let touchEndX = e.changedTouches[0].screenX;
-            if (this.touchStartX - touchEndX > 40) this.slide(1); // Swipe Left
-            if (this.touchStartX - touchEndX < -40) this.slide(-1); // Swipe Right
-        });
-
+        this.setupDragPhysics();
         this.updateView();
+    },
+
+    setupDragPhysics() {
+        const container = document.getElementById('avatar-slider-container');
+        let startX = 0;
+        let isDragging = false;
+        
+        const startDrag = (e) => {
+            isDragging = true;
+            startX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        };
+        
+        const drag = (e) => {
+            if(!isDragging) return;
+            const currentX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const diff = startX - currentX;
+            
+            // Snap to next avatar if dragged more than 40px (creates fluid rolling gear effect)
+            if (diff > 40) { 
+                this.slide(1);
+                startX = currentX; 
+            } else if (diff < -40) { 
+                this.slide(-1);
+                startX = currentX;
+            }
+        };
+
+        const endDrag = () => { isDragging = false; };
+        
+        container.addEventListener('touchstart', startDrag, {passive: true});
+        container.addEventListener('touchmove', drag, {passive: true});
+        container.addEventListener('touchend', endDrag);
+        container.addEventListener('mousedown', startDrag);
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', endDrag);
     },
 
     slide(dir) {
@@ -40,17 +64,11 @@ const AvatarEngine = {
         this.updateView();
     },
 
-    goToIndex(idx) {
-        this.currentIndex = idx;
-        this.updateView();
-    },
-
     updateView() {
         const len = this.seeds.length;
         this.elements.forEach((el, i) => {
-            el.className = 'carousel-avatar carousel-hidden'; // Reset
+            el.className = 'carousel-avatar carousel-out'; // Reset all to invisible
             
-            // Calculate relative distance wrapping around array
             let diff = i - this.currentIndex;
             if (diff > len / 2) diff -= len;
             if (diff < -len / 2) diff += len;
@@ -63,12 +81,10 @@ const AvatarEngine = {
         });
     },
 
-    getSelectedSeed() {
-        return this.seeds[this.currentIndex];
-    }
+    getSelectedSeed() { return this.seeds[this.currentIndex]; }
 };
 
-// --- SLIDE TO OVERRIDE LOGIC ---
+// --- SLIDE TO CONFIRM LOGIC ---
 let slideIsDragging = false;
 let slideStartX = 0;
 const setupSlider = () => {
@@ -95,13 +111,9 @@ const setupSlider = () => {
 
         if (deltaX > maxDelta * 0.95) {
             slideIsDragging = false;
-            thumb.style.transform = `translateX(0px)`;
-            prog.style.width = `0px`;
+            thumb.style.transform = `translateX(0px)`; prog.style.width = `0px`;
             thumb.style.transition = 'transform 0.3s ease';
-            
-            const pin = prompt("Enter Admin PIN:");
-            if (pin === "1111") GameEngine.submitAdminSlide();
-            else { alert("Unauthorized."); GameEngine.cancelSlide(); }
+            GameEngine.executeAdminAction();
         }
     };
 
@@ -112,12 +124,9 @@ const setupSlider = () => {
         thumb.style.transform = `translateX(0px)`; prog.style.width = `0px`;
     };
 
-    thumb.addEventListener('mousedown', startDrag);
-    thumb.addEventListener('touchstart', startDrag, {passive: true});
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('touchmove', drag, {passive: true});
-    document.addEventListener('mouseup', endDrag);
-    document.addEventListener('touchend', endDrag);
+    thumb.addEventListener('mousedown', startDrag); thumb.addEventListener('touchstart', startDrag, {passive: true});
+    document.addEventListener('mousemove', drag); document.addEventListener('touchmove', drag, {passive: true});
+    document.addEventListener('mouseup', endDrag); document.addEventListener('touchend', endDrag);
 };
 
 
@@ -125,12 +134,13 @@ const setupSlider = () => {
 const GameEngine = {
     mqttClient: null, isHost: false, myId: null, roomId: null, hostName: 'Host',
     selectedTargetId: null, detectiveChecked: false,
-    adminPendingPhase: null, clientAnimFrame: null, revealTimeout: null,
+    adminPendingAction: null, clientAnimFrame: null, revealTimeout: null,
     
     player: { id: null, name: '', persona: '', avatar: '', role: null, status: 'LOBBY', stats: { kills: 0, saves: 0, finds: 0, guesses: 0 } },
 
     gameState: {
         hostName: 'Host', phase: 'LOBBY', players: {}, nightInputs: {}, voteInputs: {},
+        roundSnapshot: {}, // Used for safe round resetting
         dayEndTime: 0, totalDayTime: 90000,
         lastKilledName: null, lastEliminatedName: null, lastEliminatedRole: null, lastVoteTallies: [],
         winnerTitle: null, winnerMessage: null, winnerIcon: null, winnerColor: null
@@ -142,36 +152,23 @@ const GameEngine = {
         this.checkForSavedSession();
     },
 
-    // --- TRIPLE VAULT SYSTEM: SAVE & LOAD ---
+    // --- TRIPLE VAULT SYSTEM ---
     saveHostState() {
         if(!this.isHost) return;
         localStorage.setItem('mafia_host_state', JSON.stringify({ roomId: this.roomId, state: this.gameState }));
-        // Vault 3: Trigger external JSONBin backup here (Optional free tier API integration)
-        this.backupToCloud(); 
-    },
-    
-    backupToCloud() {
-        // Vault 3 Stub: Silently sends game state to a free generic JSON bin API (e.g. npoint/jsonkeeper)
-        // using fetch. If it fails, it ignores it so the game doesn't break.
         try { fetch('https://api.npoint.io/', { method: 'POST', body: JSON.stringify(this.gameState) }).catch(()=>{}); } catch(e){}
     },
 
-    savePlayerSession() {
-        localStorage.setItem('mafia_player_session', JSON.stringify({ roomId: this.roomId, myId: this.myId, player: this.player }));
-    },
+    savePlayerSession() { localStorage.setItem('mafia_player_session', JSON.stringify({ roomId: this.roomId, myId: this.myId, player: this.player })); },
 
     clearSession() {
-        localStorage.removeItem('mafia_host_state');
-        localStorage.removeItem('mafia_player_session');
+        localStorage.removeItem('mafia_host_state'); localStorage.removeItem('mafia_player_session');
         document.getElementById('reconnect-banner').classList.add('hidden');
     },
 
     checkForSavedSession() {
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('room')) {
-            document.getElementById('join-code').value = urlParams.get('room').toUpperCase();
-            return; // If joining via link, ignore saved sessions
-        }
+        if (urlParams.get('room')) { document.getElementById('join-code').value = urlParams.get('room').toUpperCase(); return; }
 
         const savedHost = localStorage.getItem('mafia_host_state');
         const savedPlayer = localStorage.getItem('mafia_player_session');
@@ -193,16 +190,11 @@ const GameEngine = {
 
         if (savedHost) {
             const hd = JSON.parse(savedHost);
-            this.isHost = true;
-            this.roomId = hd.roomId;
-            this.gameState = hd.state;
+            this.isHost = true; this.roomId = hd.roomId; this.gameState = hd.state;
             this.connectMQTT('HOST_RECONNECT');
         } else if (savedPlayer) {
             const pd = JSON.parse(savedPlayer);
-            this.isHost = false;
-            this.roomId = pd.roomId;
-            this.myId = pd.myId;
-            this.player = pd.player;
+            this.isHost = false; this.roomId = pd.roomId; this.myId = pd.myId; this.player = pd.player;
             this.connectMQTT('PLAYER_RECONNECT');
         }
     },
@@ -233,8 +225,7 @@ const GameEngine = {
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
         btn.disabled = true;
 
-        this.isHost = false;
-        this.roomId = code;
+        this.isHost = false; this.roomId = code;
         this.myId = 'P_' + Math.random().toString(36).substring(2, 9);
         
         this.player = {
@@ -247,7 +238,6 @@ const GameEngine = {
     },
 
     connectMQTT(mode, btnElement = null) {
-        // Connect to Free Public Enterprise MQTT Server (Bypasses Safari VPNs)
         this.mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { reconnectPeriod: 3000 }); 
         
         this.mqttClient.on('connect', () => {
@@ -255,7 +245,7 @@ const GameEngine = {
                 this.mqttClient.subscribe(`gujmafia/${this.roomId}/host`);
                 if(btnElement) { btnElement.innerHTML = '<i class="fa-solid fa-chess-board text-xl"></i> CREATE GAME BOARD'; btnElement.disabled = false; }
                 this.renderHostLobby();
-                this.saveHostState(); // Vault 1 Save
+                this.saveHostState();
             } else {
                 this.mqttClient.subscribe(`gujmafia/${this.roomId}/players`);
                 this.savePlayerSession();
@@ -272,7 +262,6 @@ const GameEngine = {
                     document.getElementById('room-badge').classList.remove('hidden');
                     document.getElementById('display-room-code').innerText = this.roomId;
                 } else {
-                    // Force state pull if reconnecting
                     this.sendToHost({ type: 'RECONNECT_PULL', data: this.player });
                 }
             }
@@ -293,31 +282,31 @@ const GameEngine = {
 
     renderHostLobby() {
         this.showScreen('screen-lobby');
-        document.getElementById('host-header').classList.remove('hidden');
+        document.getElementById('host-header-panel').classList.remove('hidden');
         document.getElementById('lobby-welcome-msg').innerText = `Welcome to ${this.gameState.hostName}'s Pol`;
-        document.getElementById('lobby-room-code').innerText = this.roomId;
+        document.getElementById('lobby-room-code-display').innerText = this.roomId;
         document.getElementById('room-badge').classList.remove('hidden');
         document.getElementById('display-room-code').innerText = this.roomId;
         document.getElementById('host-lobby-controls').classList.remove('hidden');
+        document.getElementById('btn-host-settings').classList.remove('hidden');
         const joinUrl = window.location.origin + window.location.pathname + '?room=' + this.roomId;
         document.getElementById('qr-image').src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(joinUrl)}&bgcolor=ffffff&color=000000`;
         document.getElementById('qr-image').classList.remove('hidden');
-        if(this.gameState.phase !== 'LOBBY') this.broadcastState(); // Sync reconnected host
+        if(this.gameState.phase !== 'LOBBY') this.broadcastState(); 
     },
 
     // --- HOST LOGIC ENGINE ---
     handleHostReceivesData(peerId, msg) {
         if (msg.type === 'JOIN') { this.gameState.players[peerId] = msg.data; this.broadcastState(); }
-        if (msg.type === 'RECONNECT_PULL') { this.gameState.players[peerId] = msg.data; this.broadcastState(); } // Refresh the player's screen immediately
+        if (msg.type === 'RECONNECT_PULL') { this.gameState.players[peerId] = msg.data; this.broadcastState(); } 
         if (msg.type === 'NIGHT_ACTION') { this.gameState.nightInputs[peerId] = msg.data; this.checkNightProgress(); }
         if (msg.type === 'VOTE_ACTION') { this.gameState.voteInputs[peerId] = msg.data; this.checkVoteProgress(); }
     },
 
     broadcastState(actionEvent = null) {
         if(!this.isHost || !this.mqttClient) return;
-        this.saveHostState(); // Auto-save Vault 1
+        this.saveHostState(); 
         const payload = { type: 'STATE_UPDATE', data: this.gameState, event: actionEvent };
-        // Vault 2: Publish with RETAIN = TRUE so if late-joiners or refreshers connect, EMQX hands them this immediately
         this.mqttClient.publish(`gujmafia/${this.roomId}/players`, JSON.stringify(payload), { retain: true });
         this.handleClientReceivesData(payload); 
     },
@@ -343,6 +332,8 @@ const GameEngine = {
 
     startNightPhase() {
         this.gameState.phase = 'NIGHT';
+        // Take a snapshot of alive statuses so Host can safely "Restart Round" without accidental deaths
+        this.gameState.roundSnapshot = JSON.parse(JSON.stringify(this.gameState.players));
         this.gameState.nightInputs = {};
         this.gameState.voteInputs = {};
         this.gameState.lastKilledName = null;
@@ -441,7 +432,6 @@ const GameEngine = {
             this.gameState.players[votedOutId].status = 'DEAD';
             this.gameState.lastEliminatedName = this.gameState.players[votedOutId].name;
             
-            // ROLE MASKING: Only reveal Mafia
             const actualRole = this.gameState.players[votedOutId].role;
             this.gameState.lastEliminatedRole = (actualRole === 'Mafia') ? 'Mafia' : 'Villager';
             
@@ -498,17 +488,72 @@ const GameEngine = {
         }
     },
 
-    // --- ADMIN SLIDER ---
-    forcePhaseAdmin(targetPhase) {
-        this.adminPendingPhase = targetPhase;
+    // --- HOST ADMIN ACTIONS ---
+    openHostSettings() { document.getElementById('host-settings-modal').classList.remove('hidden'); },
+    
+    requestAdminAction(actionType) {
+        document.getElementById('host-settings-modal').classList.add('hidden');
+        this.adminPendingAction = actionType;
+        
+        const labels = {
+            'ADMIN_FORCE_VOTE': 'Force Vote Phase',
+            'ADMIN_FORCE_DAY': 'Force Day Phase',
+            'ADMIN_FORCE_RESULT': 'Force Results',
+            'RESET_ROUND': 'Restart Current Round',
+            'RESET_GAME': 'Reset to Lobby',
+            'END_SESSION': 'End Session & Show Stats'
+        };
+        
+        document.getElementById('slide-modal-title').innerText = `CONFIRM: ${labels[actionType]}`;
         document.getElementById('slide-modal').classList.remove('hidden');
     },
+    
     cancelSlide() { document.getElementById('slide-modal').classList.add('hidden'); },
-    submitAdminSlide() {
+    
+    executeAdminAction() {
         this.cancelSlide();
-        if(this.adminPendingPhase === 'VOTE') this.startVotingPhase();
-        else if(this.adminPendingPhase === 'DAY') this.processNightLogic();
-        else if(this.adminPendingPhase === 'RESULT') this.processVoteLogic();
+        if(!this.isHost) return;
+        
+        const action = this.adminPendingAction;
+        if(action === 'ADMIN_FORCE_VOTE') this.startVotingPhase();
+        else if(action === 'ADMIN_FORCE_DAY') this.processNightLogic();
+        else if(action === 'ADMIN_FORCE_RESULT') this.processVoteLogic();
+        else if(action === 'RESET_ROUND') {
+            // Restore snapshot and restart night
+            this.gameState.players = JSON.parse(JSON.stringify(this.gameState.roundSnapshot));
+            this.gameState.phase = 'NIGHT';
+            this.gameState.nightInputs = {};
+            this.gameState.voteInputs = {};
+            this.broadcastState();
+        }
+        else if(action === 'RESET_GAME') {
+            this.gameState.phase = 'LOBBY';
+            Object.keys(this.gameState.players).forEach(id => {
+                this.gameState.players[id].status = 'LOBBY';
+                this.gameState.players[id].role = null;
+                this.gameState.players[id].stats = { kills: 0, saves: 0, finds: 0, guesses: 0 };
+            });
+            this.broadcastState();
+        }
+        else if(action === 'END_SESSION') {
+            this.endGame('SESSION CONCLUDED', 'The Host has ended the game early.', 'fa-flag-checkered text-blue-500', 'text-blue-500');
+        }
+    },
+
+    // --- SHARE API ---
+    shareStats() {
+        if (this.isHost) return; // Host shares differently if desired, keeping this player focused
+        const p = this.player;
+        const shareText = `I survived the Pol playing MAFIA - Gujarati Edition as ${p.persona}! \n\n🎯 Kills: ${p.stats.kills} \n💊 Saves: ${p.stats.saves} \n🕵️‍♂️ Mafia Found: ${p.stats.finds} \n🧠 Correct Guesses: ${p.stats.guesses}\n\nCan you survive the Pol?`;
+        
+        if (navigator.share) {
+            navigator.share({
+                title: 'My Mafia Stats',
+                text: shareText
+            }).catch(err => console.log("Sharing cancelled", err));
+        } else {
+            alert("Share not supported on this browser.\n\n" + shareText);
+        }
     },
 
     // --- UI CLIENT RENDERING ---
@@ -516,7 +561,6 @@ const GameEngine = {
         if (msg.type !== 'STATE_UPDATE') return;
         this.gameState = msg.data;
         
-        // Ensure Room UI is synced (for reconnects)
         document.getElementById('room-badge').classList.remove('hidden');
         document.getElementById('display-room-code').innerText = this.roomId;
         
@@ -553,8 +597,8 @@ const GameEngine = {
         
         if (!this.isHost) {
              document.getElementById('lobby-welcome-msg').innerText = `Welcome to ${this.gameState.hostName}'s Pol`;
-             document.getElementById('host-header').classList.remove('hidden');
-             document.getElementById('qr-image').classList.add('hidden'); // Hide QR on player screen
+             document.getElementById('host-header-panel').classList.remove('hidden');
+             document.getElementById('qr-image').classList.add('hidden'); 
         }
 
         Object.values(this.gameState.players).forEach((p) => {
@@ -566,8 +610,6 @@ const GameEngine = {
         });
         document.getElementById('player-count').innerText = count;
     },
-
-    shuffleArray(array) { return array.sort(() => Math.random() - 0.5); },
 
     renderNight() {
         this.showScreen('screen-night');
@@ -593,7 +635,7 @@ const GameEngine = {
                     <span class="${hasActed ? 'text-green-500' : 'text-yellow-500'} text-xs font-black tracking-widest uppercase">${hasActed ? 'LOCKED IN' : 'THINKING...'}</span>
                 </li>`;
             });
-            list.innerHTML += `<li class="mt-6"><button onclick="GameEngine.forcePhaseAdmin('DAY')" class="w-full px-6 py-4 bg-red-900 border border-red-600 text-white rounded-xl shadow-lg font-black tracking-widest uppercase">Force Next (Override)</button></li>`;
+            list.innerHTML += `<li class="mt-6"><button onclick="GameEngine.requestAdminAction('ADMIN_FORCE_DAY')" class="w-full px-6 py-4 bg-red-900 border border-red-600 text-white rounded-xl shadow-lg font-black tracking-widest uppercase">Force Next (Override)</button></li>`;
             return;
         }
 
@@ -613,7 +655,8 @@ const GameEngine = {
         document.getElementById('btn-confirm-night').disabled = true;
         document.getElementById('btn-confirm-night').classList.add('opacity-50', 'cursor-not-allowed');
 
-        let aliveTargets = this.shuffleArray(Object.values(this.gameState.players).filter(p => p.status === 'ALIVE' && p.id !== this.myId));
+        let aliveTargets = AvatarEngine.seeds.slice(0); // Helper reference just for randomizing array
+        aliveTargets = Object.values(this.gameState.players).filter(p => p.status === 'ALIVE' && p.id !== this.myId).sort(() => Math.random() - 0.5);
 
         aliveTargets.forEach(p => {
             const li = document.createElement('li');
@@ -649,7 +692,6 @@ const GameEngine = {
         let popupHtml = '';
         let borderClass = 'border-gray-600';
         
-        // Stealth Flash Logic
         if (myData.role === 'Detective') {
             const isMafia = this.gameState.players[this.selectedTargetId].role === 'Mafia';
             const resultText = isMafia ? "MAFIA" : "VILLAGER";
@@ -727,7 +769,7 @@ const GameEngine = {
                     <span class="${hasVoted ? 'text-green-500' : 'text-yellow-500'} text-xs font-black tracking-widest uppercase">${hasVoted ? 'VOTED' : 'DECIDING...'}</span>
                 </li>`;
             });
-            list.innerHTML += `<li class="mt-6"><button onclick="GameEngine.forcePhaseAdmin('RESULT')" class="w-full px-6 py-4 bg-orange-900 border border-orange-600 text-white rounded-xl shadow-lg font-black tracking-widest uppercase">Force Next (Override)</button></li>`;
+            list.innerHTML += `<li class="mt-6"><button onclick="GameEngine.requestAdminAction('ADMIN_FORCE_RESULT')" class="w-full px-6 py-4 bg-orange-900 border border-orange-600 text-white rounded-xl shadow-lg font-black tracking-widest uppercase">Force Next (Override)</button></li>`;
             return;
         }
 
@@ -758,7 +800,7 @@ const GameEngine = {
         };
         list.appendChild(skipLi);
 
-        let aliveTargets = this.shuffleArray(Object.values(this.gameState.players).filter(p => p.status === 'ALIVE'));
+        let aliveTargets = Object.values(this.gameState.players).filter(p => p.status === 'ALIVE').sort(() => Math.random() - 0.5);
 
         aliveTargets.forEach(p => {
             const li = document.createElement('li');
@@ -789,6 +831,7 @@ const GameEngine = {
         const reveal = document.getElementById('elimination-reveal');
         const talliesCont = document.getElementById('vote-tallies-container');
         const endStatsCont = document.getElementById('end-stats-container');
+        const btnShare = document.getElementById('btn-share-stats');
         
         icon.classList.remove('scale-in'); title.classList.remove('fade-in'); reveal.classList.remove('fade-in');
 
@@ -817,6 +860,8 @@ const GameEngine = {
 
         if (this.gameState.phase === 'END') {
             endStatsCont.classList.remove('hidden');
+            if(!this.isHost) btnShare.classList.remove('hidden');
+            
             const slist = document.getElementById('end-stats-list');
             slist.innerHTML = '';
             
@@ -835,6 +880,7 @@ const GameEngine = {
             if(slist.innerHTML === '') slist.innerHTML = '<li class="text-gray-500 text-center">No notable stats this round.</li>';
         } else {
             endStatsCont.classList.add('hidden');
+            btnShare.classList.add('hidden');
         }
 
         setTimeout(() => { icon.classList.add('scale-in'); }, 100);
