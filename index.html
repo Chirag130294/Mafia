@@ -4,9 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>MAFIA - Party Game</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PeerJS for Serverless Multiplayer -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    
+    <!-- QRCode.js for scanning to join -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans h-screen w-screen overflow-hidden flex flex-col">
@@ -37,7 +48,7 @@
                 <p class="text-gray-400 text-sm tracking-widest uppercase mt-1">The Gujarati Edition</p>
             </div>
 
-            <!-- HOST SECTION (No name required) -->
+            <!-- HOST SECTION -->
             <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-2xl text-center">
                 <h3 class="text-gray-400 mb-3 text-sm uppercase tracking-wide">Set up the board</h3>
                 <button id="btn-create" onclick="GameEngine.createRoom()" class="w-full bg-red-600 hover:bg-red-700 text-white p-4 rounded-lg font-black tracking-wider shadow-lg active:scale-95 transition-all flex justify-center items-center gap-2">
@@ -47,26 +58,26 @@
 
             <div class="relative flex py-2 items-center">
                 <div class="flex-grow border-t border-gray-700"></div>
-                <span class="flex-shrink-0 mx-4 text-gray-500 text-sm">OR JOIN AS PLAYER</span>
+                <span class="flex-shrink-0 mx-4 text-gray-500 text-sm font-bold tracking-wide">OR JOIN AS PLAYER</span>
                 <div class="flex-grow border-t border-gray-700"></div>
             </div>
 
             <!-- PLAYER SECTION -->
             <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-2xl">
-                <!-- Name (Mandatory) -->
+                <!-- Name -->
                 <input type="text" id="player-name" placeholder="Your Name (Required)" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg mb-4 text-white placeholder-gray-400 focus:outline-none focus:border-red-500">
                 
-                <!-- Avatar Picker (Optional) -->
+                <!-- Avatar Picker -->
                 <p class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Select Avatar (Optional)</p>
                 <div class="flex justify-between gap-2 mb-4" id="avatar-container">
-                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=1" class="avatar-btn selected" data-seed="1" onclick="selectAvatar(this)">
-                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=2" class="avatar-btn" data-seed="2" onclick="selectAvatar(this)">
-                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=3" class="avatar-btn" data-seed="3" onclick="selectAvatar(this)">
-                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=4" class="avatar-btn" data-seed="4" onclick="selectAvatar(this)">
-                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=5" class="avatar-btn" data-seed="5" onclick="selectAvatar(this)">
+                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=1" class="avatar-btn selected" data-seed="1" onclick="selectAvatar(this)" alt="Avatar 1">
+                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=2" class="avatar-btn" data-seed="2" onclick="selectAvatar(this)" alt="Avatar 2">
+                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=3" class="avatar-btn" data-seed="3" onclick="selectAvatar(this)" alt="Avatar 3">
+                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=4" class="avatar-btn" data-seed="4" onclick="selectAvatar(this)" alt="Avatar 4">
+                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=5" class="avatar-btn" data-seed="5" onclick="selectAvatar(this)" alt="Avatar 5">
                 </div>
 
-                <!-- Persona (Optional) -->
+                <!-- Persona -->
                 <select id="player-persona" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg mb-4 text-gray-300 focus:outline-none">
                     <option value="">-- Select Persona (Optional) --</option>
                     <option value="The Gossip Queen">The Gossip Queen</option>
@@ -86,27 +97,97 @@
 
         <!-- SCREEN: Lobby -->
         <div id="screen-lobby" class="screen-hidden w-full max-w-md mx-auto">
+            
+            <!-- Host Header with QR Code -->
             <div id="host-header" class="hidden bg-gray-800 p-6 rounded-xl border border-red-500/50 shadow-[0_0_15px_rgba(220,38,38,0.2)] text-center mb-6">
                 <p class="text-gray-400 uppercase tracking-widest text-sm mb-1">Room Code</p>
-                <h1 class="text-6xl font-mono font-black text-red-500 tracking-widest" id="lobby-room-code">----</h1>
+                <h1 class="text-6xl font-mono font-black text-red-500 tracking-widest mb-4" id="lobby-room-code">----</h1>
+                
+                <!-- QR Code Box -->
+                <div class="flex flex-col items-center justify-center bg-white p-3 rounded-lg mx-auto w-fit mb-2 shadow-lg hover:scale-105 transition-transform">
+                    <div id="qrcode"></div>
+                </div>
+                <p class="text-xs text-gray-400 uppercase tracking-widest">Scan to join directly</p>
             </div>
             
             <h3 class="font-bold text-lg mb-4 text-gray-300 border-b border-gray-700 pb-2">Players Joined (<span id="player-count">0</span>)</h3>
             <ul id="player-list" class="space-y-3 mb-6 h-64 overflow-y-auto pr-2">
-                <!-- Players load here -->
+                <!-- Players dynamically load here -->
             </ul>
 
             <div id="host-lobby-controls" class="hidden mt-auto">
-                <button onclick="GameEngine.startGame()" class="w-full bg-red-600 text-white p-4 rounded-lg font-black tracking-widest shadow-lg active:scale-95 transition-transform text-lg">START GAME</button>
+                <button onclick="GameEngine.startGame()" class="w-full bg-red-600 hover:bg-red-700 text-white p-4 rounded-lg font-black tracking-widest shadow-lg active:scale-95 transition-transform text-lg">START GAME</button>
             </div>
         </div>
 
-        <!-- Add the other screens (Night, Vibe) here exactly as they were in the previous version, just styled dark -->
-        <!-- I am omitting them here for brevity to focus on the fix, but keep them in your file! -->
+        <!-- SCREEN: Night Phase (Universal Mask) -->
+        <div id="screen-night" class="screen-hidden w-full max-w-md mx-auto h-full flex flex-col justify-center">
+            <div class="text-center mb-4 relative">
+                <h2 class="text-2xl font-black text-red-500 tracking-widest">NIGHT HAS FALLEN</h2>
+                <p class="text-gray-400 text-sm uppercase tracking-wide">Choose your interaction.</p>
+                
+                <!-- Secret Role Reveal Button -->
+                <button id="btn-reveal-role" class="absolute top-0 right-0 text-xs bg-gray-800 border border-gray-600 text-gray-400 px-2 py-1 rounded shadow-inner active:bg-red-600 active:text-white transition-colors select-none">
+                    Hold to Reveal Role
+                </button>
+                <div id="secret-role-display" class="hidden absolute top-8 right-0 bg-red-800 text-white text-sm px-3 py-1 rounded shadow-lg font-bold z-20 border border-red-500">
+                    <!-- Role injected here -->
+                </div>
+            </div>
+
+            <div class="flex-grow overflow-y-auto bg-gray-800 rounded-xl shadow-inner border border-gray-700 p-2 mb-4 h-64">
+                <ul id="night-target-list" class="space-y-2">
+                    <!-- Targetable players injected here -->
+                </ul>
+            </div>
+
+            <button id="btn-confirm-night" onclick="GameEngine.submitNightAction()" class="w-full bg-red-600 text-white p-4 rounded-lg font-black shadow-lg opacity-50 cursor-not-allowed transition-all tracking-widest" disabled>CONFIRM SELECTION</button>
+        </div>
+
+        <!-- SCREEN: Waiting / Day Phase (Chai Animation) -->
+        <div id="screen-vibe" class="screen-hidden w-full max-w-md mx-auto text-center mt-10">
+            <h2 id="vibe-title" class="text-3xl font-black text-yellow-500 mb-2 tracking-widest">CHAI TIME!</h2>
+            <p id="vibe-subtitle" class="text-gray-400 mb-8 uppercase tracking-wide text-sm">Discuss and find the Kaali Toli.</p>
+            
+            <!-- Animations -->
+            <div class="relative w-48 h-48 mx-auto mb-8">
+                <div class="chai-cup absolute bottom-0 left-1/2 transform -translate-x-1/2 text-6xl text-yellow-600 drop-shadow-lg">
+                    <i class="fa-solid fa-mug-hot"></i>
+                    <div class="steam steam-1"></div>
+                    <div class="steam steam-2"></div>
+                </div>
+                <div id="khari-plate" class="khari-hidden absolute bottom-0 right-0 text-5xl text-orange-400 drop-shadow-lg">
+                    <i class="fa-solid fa-cookie"></i>
+                </div>
+            </div>
+
+            <div id="timer-display" class="text-6xl font-mono font-black text-red-500 mb-8 drop-shadow-[0_0_10px_rgba(220,38,38,0.3)]">01:30</div>
+
+            <!-- Host Override Panel -->
+            <div id="host-override-panel" class="hidden bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-lg">
+                <h4 class="text-sm font-bold text-gray-500 mb-3 uppercase tracking-widest">Admin Overrides</h4>
+                <div class="flex gap-2">
+                    <button onclick="GameEngine.addTime()" class="flex-1 bg-yellow-600 text-gray-900 p-2 rounded shadow font-bold">+30s (Khari)</button>
+                    <button onclick="GameEngine.forcePhaseAdmin()" class="flex-1 bg-red-700 text-white p-2 rounded shadow font-bold"><i class="fa-solid fa-lock"></i> Force Next</button>
+                </div>
+            </div>
+        </div>
 
     </main>
 
-    <!-- Global scripts -->
+    <!-- Admin PIN Modal -->
+    <div id="pin-modal" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-red-500 text-center w-80">
+            <h3 class="text-lg font-black tracking-widest text-red-500 mb-4 uppercase">System Admin</h3>
+            <input type="password" id="admin-pin-input" placeholder="Enter PIN" class="w-full p-3 bg-gray-900 border border-gray-700 rounded mb-4 text-center text-3xl tracking-widest text-white focus:outline-none focus:border-red-500" maxlength="4">
+            <div class="flex gap-2">
+                <button onclick="GameEngine.cancelPin()" class="flex-1 bg-gray-700 text-gray-300 hover:bg-gray-600 p-2 rounded font-bold transition-colors">Cancel</button>
+                <button onclick="GameEngine.submitPin()" class="flex-1 bg-red-600 hover:bg-red-700 text-white p-2 rounded font-bold shadow-lg transition-colors">Authorize</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Logic Script -->
     <script src="app.js"></script>
 </body>
 </html>
