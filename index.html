@@ -5,32 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>MAFIA - Gujarati Edition</title>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- PeerJS for Serverless Multiplayer -->
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    
-    <!-- FontAwesome -->
+    <!-- MIGRATED TO MQTT FOR IPHONE FIREWALL BYPASS -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
-    
-    <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans h-screen w-screen overflow-hidden flex flex-col bg-pattern">
 
     <!-- Top Bar -->
     <header class="bg-gray-900/90 backdrop-blur-md border-b border-red-900/50 p-3 shadow-lg flex justify-between items-center z-10 h-16">
-        <!-- Host Brand -->
         <div id="header-brand" class="flex items-center gap-2">
             <i class="fa-solid fa-user-secret text-red-600 text-2xl"></i>
             <h1 class="text-xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-yellow-500">MAFIA</h1>
         </div>
         
-        <!-- Player Profile (Hidden until joined) -->
         <div id="header-player-profile" class="hidden flex items-center gap-2">
             <img id="header-avatar" src="" class="w-10 h-10 rounded-full border border-gray-600 bg-gray-800 shadow-inner">
             <div class="flex flex-col text-left">
@@ -39,13 +29,26 @@
             </div>
         </div>
         
-        <div id="room-badge" class="hidden bg-gray-800 px-3 py-1 rounded-full text-sm font-mono border border-gray-700 shadow-inner">
-            ROOM: <span id="display-room-code" class="text-yellow-500 font-bold"></span>
+        <div id="room-badge" class="hidden bg-gray-800 px-3 py-1 rounded-full text-sm font-mono border border-gray-700 shadow-inner flex flex-col items-end">
+            <span class="text-[8px] text-gray-400 uppercase tracking-widest">Room</span>
+            <span id="display-room-code" class="text-yellow-500 font-bold leading-tight"></span>
         </div>
     </header>
 
     <main id="app-container" class="flex-grow relative overflow-y-auto p-4 flex flex-col items-center justify-center">
         
+        <!-- RECONNECT NOTIFICATION -->
+        <div id="reconnect-banner" class="hidden w-full max-w-md mb-4 bg-blue-900/80 border border-blue-500 p-4 rounded-xl shadow-xl flex justify-between items-center backdrop-blur z-50">
+            <div>
+                <p class="text-xs text-blue-300 font-bold uppercase tracking-widest">Saved Session Found</p>
+                <p class="text-sm font-black text-white" id="reconnect-text">Reconnect to game?</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="GameEngine.clearSession()" class="bg-gray-800 text-gray-400 px-3 py-2 rounded font-bold text-xs">Clear</button>
+                <button onclick="GameEngine.reconnectPlayer()" class="bg-blue-500 text-white px-4 py-2 rounded font-black text-xs shadow-[0_0_10px_rgba(59,130,246,0.6)]">RESUME</button>
+            </div>
+        </div>
+
         <!-- SCREEN 1: LOGIN -->
         <div id="screen-login" class="screen-active w-full max-w-md mx-auto space-y-6 pb-10">
             <div class="text-center mb-6">
@@ -56,7 +59,10 @@
                 <p class="text-gray-400 text-xs tracking-widest uppercase mt-2 letter-spacing-wide">The Gujarati Pol Edition</p>
             </div>
 
+            <!-- Host Creation Box -->
             <div class="bg-gray-800/80 backdrop-blur p-4 rounded-2xl border border-gray-700 shadow-2xl">
+                <p class="text-xs text-gray-400 mb-2 uppercase tracking-widest font-bold text-center">Start a New Pol</p>
+                <input type="text" id="host-name" placeholder="Host Name (e.g., Nishit)" class="w-full p-4 bg-gray-900 border border-gray-600 rounded-xl mb-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 font-bold transition-colors text-center" maxlength="12">
                 <button id="btn-create" onclick="GameEngine.createRoom()" class="w-full bg-gradient-to-r from-red-700 to-red-500 hover:from-red-600 hover:to-red-400 text-white p-4 rounded-xl font-black tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] active:scale-95 transition-all flex justify-center items-center gap-3">
                     <i class="fa-solid fa-chess-board text-xl"></i> CREATE GAME BOARD
                 </button>
@@ -68,20 +74,33 @@
                 <div class="flex-grow border-t border-gray-700"></div>
             </div>
 
+            <!-- Player Join Box -->
             <div class="bg-gray-800/80 backdrop-blur p-6 rounded-2xl border border-gray-700 shadow-2xl">
-                <input type="text" id="player-name" placeholder="Your Name (Required)" class="w-full p-4 bg-gray-900 border border-gray-600 rounded-xl mb-4 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 font-bold transition-colors" maxlength="12">
+                <input type="text" id="player-name" placeholder="Your Name (Required)" class="w-full p-4 bg-gray-900 border border-gray-600 rounded-xl mb-4 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 font-bold transition-colors text-center" maxlength="12">
                 
-                <p class="text-xs text-gray-400 mb-3 uppercase tracking-widest font-bold text-center">Select Avatar</p>
-                <!-- Avatars dynamically generated here via app.js -->
-                <div class="flex justify-between gap-2 mb-5" id="avatar-container"></div>
+                <p class="text-xs text-gray-400 mb-2 uppercase tracking-widest font-bold text-center">Select Avatar</p>
+                
+                <!-- DYNAMIC AVATAR CAROUSEL -->
+                <div id="avatar-slider-container" class="relative w-full h-24 flex items-center justify-center overflow-hidden mb-5">
+                    <button onclick="AvatarEngine.slide(-1)" class="absolute left-0 z-40 bg-gray-800/80 text-white w-8 h-8 rounded-full border border-gray-600"><i class="fa-solid fa-chevron-left"></i></button>
+                    <div id="carousel-track" class="relative w-full h-full flex items-center justify-center"></div>
+                    <button onclick="AvatarEngine.slide(1)" class="absolute right-0 z-40 bg-gray-800/80 text-white w-8 h-8 rounded-full border border-gray-600"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
 
                 <select id="player-persona" class="w-full p-4 bg-gray-900 border border-gray-600 rounded-xl mb-5 text-gray-300 focus:outline-none focus:border-red-500 cursor-pointer font-bold">
                     <option value="Silent Observer">-- Select Persona --</option>
+                    <option value="The Kanjus Seth">The Kanjus Seth</option>
                     <option value="The Gossip Queen">The Gossip Queen</option>
                     <option value="The Logical Uncle">The Logical Uncle</option>
                     <option value="The Chai-Addict">The Chai-Addict</option>
                     <option value="The Secret Agent">The Secret Agent</option>
                     <option value="The Pol-no-Don">The Pol-no-Don</option>
+                    <option value="The NRI Cousin">The NRI Cousin</option>
+                    <option value="The Garba Enthusiast">The Garba Enthusiast</option>
+                    <option value="The Fafda-Jalebi Critic">The Fafda-Jalebi Critic</option>
+                    <option value="The Mukhvas Master">The Mukhvas Master</option>
+                    <option value="The Nosy Padosi">The Nosy Padosi</option>
+                    <option value="The Cricket Commentator">The Cricket Commentator</option>
                 </select>
                 
                 <div class="flex gap-2">
@@ -93,13 +112,16 @@
 
         <!-- SCREEN 2: LOBBY -->
         <div id="screen-lobby" class="screen-hidden w-full max-w-md mx-auto flex flex-col h-full">
-            <div id="host-header" class="hidden bg-gray-800/90 p-4 rounded-2xl border border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.2)] mb-4 flex items-center gap-4 mt-2">
-                <div class="bg-white p-2 rounded-xl shadow-xl flex-shrink-0">
-                    <img id="qr-image" src="" alt="Scan" class="w-24 h-24 hidden">
-                </div>
-                <div class="flex-grow text-left">
-                    <p class="text-gray-400 uppercase tracking-widest text-[10px] font-bold">Scan or enter code</p>
-                    <h1 class="text-5xl font-mono font-black text-red-500 tracking-widest drop-shadow-md" id="lobby-room-code">----</h1>
+            <div id="host-header" class="hidden bg-gray-800/90 p-4 rounded-2xl border border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.2)] mb-4 flex flex-col items-center gap-2 mt-2 text-center">
+                <h2 id="lobby-welcome-msg" class="text-lg font-black text-white tracking-widest uppercase mb-2"></h2>
+                <div class="flex items-center gap-4 w-full">
+                    <div class="bg-white p-2 rounded-xl shadow-xl flex-shrink-0">
+                        <img id="qr-image" src="" alt="Scan" class="w-20 h-20 hidden">
+                    </div>
+                    <div class="flex-grow text-left">
+                        <p class="text-gray-400 uppercase tracking-widest text-[10px] font-bold">Scan or enter code</p>
+                        <h1 class="text-5xl font-mono font-black text-red-500 tracking-widest drop-shadow-md" id="lobby-room-code">----</h1>
+                    </div>
                 </div>
             </div>
             
@@ -110,15 +132,13 @@
             
             <ul id="player-list" class="space-y-3 mb-6 flex-grow overflow-y-auto pr-2 custom-scroll pb-20"></ul>
 
-            <div id="host-lobby-controls" class="hidden absolute bottom-4 left-4 right-4 bg-gray-900/90 p-4 rounded-t-2xl">
+            <div id="host-lobby-controls" class="hidden absolute bottom-4 left-4 right-4 bg-gray-900/90 p-4 rounded-t-2xl z-20">
                 <button onclick="GameEngine.startGame()" class="w-full bg-gradient-to-r from-red-700 to-red-500 text-white p-5 rounded-xl font-black tracking-widest shadow-[0_0_20px_rgba(220,38,38,0.4)] active:scale-95 transition-all text-xl">START GAME</button>
             </div>
         </div>
 
         <!-- SCREEN 3: NIGHT PHASE -->
         <div id="screen-night" class="screen-hidden w-full max-w-md mx-auto h-full flex flex-col py-4">
-            
-            <!-- Active Action Panel -->
             <div id="night-action-panel" class="flex flex-col h-full">
                 <div class="text-center mb-4 relative">
                     <div class="text-4xl text-blue-500 mb-2 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]"><i class="fa-solid fa-moon"></i></div>
@@ -139,7 +159,6 @@
                 <button id="btn-confirm-night" onclick="GameEngine.submitNightAction()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-black shadow-[0_0_15px_rgba(59,130,246,0.3)] opacity-50 cursor-not-allowed transition-all tracking-widest text-lg" disabled>CONFIRM SELECTION</button>
             </div>
 
-            <!-- Locked Panel (Shows after confirm) -->
             <div id="night-locked-panel" class="hidden h-full flex flex-col items-center justify-center text-center">
                 <div class="text-6xl text-blue-500 mb-6 animate-pulse"><i class="fa-solid fa-check-double"></i></div>
                 <h2 class="text-2xl font-black tracking-widest text-gray-200">ACTION LOCKED</h2>
@@ -183,7 +202,6 @@
 
         <!-- SCREEN 5: VOTING -->
         <div id="screen-vote" class="screen-hidden w-full max-w-md mx-auto h-full flex flex-col py-6">
-            
             <div id="vote-action-panel" class="flex flex-col h-full">
                 <div class="text-center mb-6">
                     <div class="text-5xl text-orange-500 mb-2"><i class="fa-solid fa-gavel"></i></div>
@@ -205,7 +223,7 @@
             </div>
         </div>
 
-        <!-- SCREEN 6: RESULTS & END GAME STATS -->
+        <!-- SCREEN 6: RESULTS -->
         <div id="screen-result" class="screen-hidden w-full max-w-md mx-auto flex flex-col items-center justify-center h-full text-center py-6">
             <div id="result-icon" class="text-7xl mb-4 drop-shadow-[0_0_20px_rgba(0,0,0,0.5)] transform scale-0 transition-transform duration-700"></div>
             <h2 id="result-title" class="text-4xl font-black tracking-widest mb-4 drop-shadow-lg opacity-0 transition-opacity duration-1000 delay-300">RESULT</h2>
