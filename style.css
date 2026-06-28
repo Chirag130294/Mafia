@@ -1,7 +1,5 @@
-/* Typography & Base */
 body { font-family: 'Montserrat', sans-serif; }
 
-/* Subtle dark pattern for background */
 .bg-pattern {
     background-color: #111827;
     background-image: radial-gradient(#ef4444 0.5px, transparent 0.5px), radial-gradient(#ef4444 0.5px, #111827 0.5px);
@@ -10,11 +8,9 @@ body { font-family: 'Montserrat', sans-serif; }
     background-attachment: fixed;
 }
 
-/* Screen Management */
 .screen-hidden { display: none !important; }
 .screen-active { display: flex; flex-direction: column; }
 
-/* Glowing Text FX */
 .mafia-title {
     background: linear-gradient(to bottom right, #ef4444, #f59e0b);
     -webkit-background-clip: text;
@@ -22,7 +18,6 @@ body { font-family: 'Montserrat', sans-serif; }
     filter: drop-shadow(0px 4px 10px rgba(220,38,38,0.3));
 }
 
-/* Logo Breathe Animation */
 .logo-anim { animation: breathe 3s infinite ease-in-out; }
 @keyframes breathe {
     0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(220,38,38,0.5)); }
@@ -30,7 +25,6 @@ body { font-family: 'Montserrat', sans-serif; }
     100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(220,38,38,0.5)); }
 }
 
-/* Avatar Selection */
 .avatar-btn {
     width: 60px; height: 60px;
     border-radius: 50%;
@@ -42,36 +36,33 @@ body { font-family: 'Montserrat', sans-serif; }
 .avatar-btn:hover { border-color: #6b7280; transform: scale(1.05); }
 .avatar-btn.selected {
     border-color: #ef4444;
-    transform: scale(1.2);
+    transform: scale(1.25);
     box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
     z-index: 10;
 }
 
-/* List Items (Target & Voting) */
-.list-item-btn {
-    transition: all 0.2s ease;
-}
+.list-item-btn { transition: all 0.2s ease; }
 .list-item-btn.selected {
     transform: scale(1.02);
     border-color: #ef4444 !important;
     background-color: rgba(220, 38, 38, 0.2) !important;
 }
 
-/* Chai & Khari Animations */
-.chai-cup { position: relative; }
+/* Chai Logic Animations */
 .steam {
     position: absolute; width: 6px; height: 25px;
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 50%; opacity: 0; filter: blur(3px);
     animation: rise 2.5s infinite ease-in;
+    z-index: 20;
 }
-.steam-1 { left: 25%; top: -10px; animation-delay: 0s; }
-.steam-2 { left: 50%; top: -20px; animation-delay: 0.8s; }
-.steam-3 { left: 75%; top: -10px; animation-delay: 1.6s; }
+.steam-1 { left: 25%; top: -20px; animation-delay: 0s; }
+.steam-2 { left: 50%; top: -30px; animation-delay: 0.8s; }
+.steam-3 { left: 75%; top: -20px; animation-delay: 1.6s; }
 
 @keyframes rise {
-    0% { transform: translateY(0) scale(1); opacity: 0.6; }
-    100% { transform: translateY(-60px) scale(3); opacity: 0; }
+    0% { transform: translateY(0) scale(1); opacity: 0.7; }
+    100% { transform: translateY(-70px) scale(3); opacity: 0; }
 }
 
 .khari-hidden {
@@ -80,12 +71,13 @@ body { font-family: 'Montserrat', sans-serif; }
 }
 .khari-visible { opacity: 1; transform: translateX(0) rotate(0deg); }
 
-/* Utilities */
 .select-none { user-select: none; -webkit-user-select: none; }
 .letter-spacing-wide { letter-spacing: 0.2em; }
 
-/* Scrollbars */
 .custom-scroll::-webkit-scrollbar { width: 6px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
 .custom-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
 .custom-scroll::-webkit-scrollbar-thumb:hover { background: #ef4444; }
+
+.scale-in { transform: scale(1) !important; }
+.fade-in { opacity: 1 !important; }
