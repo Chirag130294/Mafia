@@ -1,50 +1,74 @@
-let selectedAvatarSeed = '';
-
-// Dynamically generate 6 unique avatars (3 male-style, 3 female-style)
-function generateRandomAvatars() {
-    const maleSeeds = ['Jack', 'Leo', 'Sam', 'Milo', 'Oliver', 'Max', 'Toby', 'Oscar'];
-    const femaleSeeds = ['Mia', 'Zoe', 'Lily', 'Chloe', 'Ava', 'Ruby', 'Bella', 'Luna'];
+// --- AVATAR CAROUSEL ENGINE ---
+const AvatarEngine = {
+    seeds: [
+        'Jack', 'Leo', 'Sam', 'Milo', 'Oliver', 'Max', 'Toby', 'Oscar', // Males
+        'Mia', 'Zoe', 'Lily', 'Chloe', 'Ava', 'Ruby', 'Bella'          // Females
+    ],
+    elements: [],
+    currentIndex: 0,
+    touchStartX: 0,
     
-    const shuffledM = maleSeeds.sort(() => 0.5 - Math.random()).slice(0, 3);
-    const shuffledF = femaleSeeds.sort(() => 0.5 - Math.random()).slice(0, 3);
-    const finalSeeds = [...shuffledM, ...shuffledF].sort(() => 0.5 - Math.random());
-    
-    const container = document.getElementById('avatar-container');
-    container.innerHTML = '';
-    
-    finalSeeds.forEach((seed, idx) => {
-        const img = document.createElement('img');
-        img.src = `https://api.dicebear.com/9.x/avataaars/svg?seed=${seed}&backgroundColor=transparent`;
-        img.className = `avatar-btn ${idx === 0 ? 'selected' : ''}`;
-        img.setAttribute('data-seed', seed);
-        img.onclick = function() { selectAvatar(this); };
-        container.appendChild(img);
-        if(idx === 0) selectedAvatarSeed = seed;
-    });
-}
+    init() {
+        // Shuffle seeds once on load
+        this.seeds = this.seeds.sort(() => 0.5 - Math.random());
+        const track = document.getElementById('carousel-track');
+        track.innerHTML = '';
+        
+        this.seeds.forEach((seed, index) => {
+            const img = document.createElement('img');
+            img.src = `https://api.dicebear.com/9.x/avataaars/svg?seed=${seed}&backgroundColor=transparent`;
+            img.className = `carousel-avatar carousel-hidden`;
+            img.onclick = () => this.goToIndex(index);
+            track.appendChild(img);
+            this.elements.push(img);
+        });
 
-function selectAvatar(element) {
-    document.querySelectorAll('.avatar-btn').forEach(btn => {
-        btn.classList.remove('selected');
-        btn.style.transform = 'scale(1)'; 
-    });
-    element.classList.add('selected');
-    selectedAvatarSeed = element.getAttribute('data-seed');
-    element.animate([ { transform: 'scale(1)' }, { transform: 'scale(1.3)' }, { transform: 'scale(1.25)' } ], { duration: 300, easing: 'ease-out', fill: 'forwards' });
-}
+        // Setup swipe listeners
+        const container = document.getElementById('avatar-slider-container');
+        container.addEventListener('touchstart', e => this.touchStartX = e.changedTouches[0].screenX, {passive: true});
+        container.addEventListener('touchend', e => {
+            let touchEndX = e.changedTouches[0].screenX;
+            if (this.touchStartX - touchEndX > 40) this.slide(1); // Swipe Left
+            if (this.touchStartX - touchEndX < -40) this.slide(-1); // Swipe Right
+        });
 
-// iPhone/Mobile robust connection configuration
-const peerConfig = {
-    config: {
-        'iceServers': [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun.cloudflare.com:3478' }
-        ]
+        this.updateView();
+    },
+
+    slide(dir) {
+        this.currentIndex = (this.currentIndex + dir + this.seeds.length) % this.seeds.length;
+        this.updateView();
+    },
+
+    goToIndex(idx) {
+        this.currentIndex = idx;
+        this.updateView();
+    },
+
+    updateView() {
+        const len = this.seeds.length;
+        this.elements.forEach((el, i) => {
+            el.className = 'carousel-avatar carousel-hidden'; // Reset
+            
+            // Calculate relative distance wrapping around array
+            let diff = i - this.currentIndex;
+            if (diff > len / 2) diff -= len;
+            if (diff < -len / 2) diff += len;
+
+            if (diff === 0) el.classList.add('carousel-pos-0');
+            else if (diff === 1) el.classList.add('carousel-pos-1');
+            else if (diff === -1) el.classList.add('carousel-pos-minus-1');
+            else if (diff === 2) el.classList.add('carousel-pos-2');
+            else if (diff === -2) el.classList.add('carousel-pos-minus-2');
+        });
+    },
+
+    getSelectedSeed() {
+        return this.seeds[this.currentIndex];
     }
 };
 
-// SLIDE TO OVERRIDE LOGIC with 1111 Admin PIN
+// --- SLIDE TO OVERRIDE LOGIC ---
 let slideIsDragging = false;
 let slideStartX = 0;
 const setupSlider = () => {
@@ -75,14 +99,9 @@ const setupSlider = () => {
             prog.style.width = `0px`;
             thumb.style.transition = 'transform 0.3s ease';
             
-            // Administrative PIN Check
-            const pin = prompt("Enter Admin PIN to authorize override:");
-            if (pin === "1111") {
-                GameEngine.submitAdminSlide();
-            } else {
-                alert("Unauthorized Action.");
-                GameEngine.cancelSlide();
-            }
+            const pin = prompt("Enter Admin PIN:");
+            if (pin === "1111") GameEngine.submitAdminSlide();
+            else { alert("Unauthorized."); GameEngine.cancelSlide(); }
         }
     };
 
@@ -102,86 +121,109 @@ const setupSlider = () => {
 };
 
 
+// --- GAME ENGINE ---
 const GameEngine = {
-    peer: null, connections: [], conn: null, 
-    isHost: false, myId: null, roomId: null,
-    
+    mqttClient: null, isHost: false, myId: null, roomId: null, hostName: 'Host',
     selectedTargetId: null, detectiveChecked: false,
     adminPendingPhase: null, clientAnimFrame: null, revealTimeout: null,
     
     player: { id: null, name: '', persona: '', avatar: '', role: null, status: 'LOBBY', stats: { kills: 0, saves: 0, finds: 0, guesses: 0 } },
 
     gameState: {
-        phase: 'LOBBY', 
-        players: {}, nightInputs: {}, voteInputs: {},
+        hostName: 'Host', phase: 'LOBBY', players: {}, nightInputs: {}, voteInputs: {},
         dayEndTime: 0, totalDayTime: 90000,
         lastKilledName: null, lastEliminatedName: null, lastEliminatedRole: null, lastVoteTallies: [],
         winnerTitle: null, winnerMessage: null, winnerIcon: null, winnerColor: null
     },
 
     init() {
-        sessionStorage.clear(); 
-        generateRandomAvatars();
+        AvatarEngine.init();
         setupSlider();
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const scannedRoom = urlParams.get('room');
-        if (scannedRoom) {
-            document.getElementById('join-code').value = scannedRoom.toUpperCase();
-            document.getElementById('player-name').focus();
-        }
-
-        const btnReveal = document.getElementById('btn-reveal-role');
-        const displayRole = document.getElementById('secret-role-display');
-        const showRole = (e) => { e.preventDefault(); displayRole.classList.remove('hidden'); };
-        const hideRole = (e) => { e.preventDefault(); displayRole.classList.add('hidden'); };
-        btnReveal.addEventListener('mousedown', showRole);
-        btnReveal.addEventListener('touchstart', showRole, {passive: false});
-        btnReveal.addEventListener('mouseup', hideRole);
-        btnReveal.addEventListener('touchend', hideRole);
-        btnReveal.addEventListener('mouseleave', hideRole);
+        this.checkForSavedSession();
     },
 
-    // --- HOST NETWORKING ---
+    // --- TRIPLE VAULT SYSTEM: SAVE & LOAD ---
+    saveHostState() {
+        if(!this.isHost) return;
+        localStorage.setItem('mafia_host_state', JSON.stringify({ roomId: this.roomId, state: this.gameState }));
+        // Vault 3: Trigger external JSONBin backup here (Optional free tier API integration)
+        this.backupToCloud(); 
+    },
+    
+    backupToCloud() {
+        // Vault 3 Stub: Silently sends game state to a free generic JSON bin API (e.g. npoint/jsonkeeper)
+        // using fetch. If it fails, it ignores it so the game doesn't break.
+        try { fetch('https://api.npoint.io/', { method: 'POST', body: JSON.stringify(this.gameState) }).catch(()=>{}); } catch(e){}
+    },
+
+    savePlayerSession() {
+        localStorage.setItem('mafia_player_session', JSON.stringify({ roomId: this.roomId, myId: this.myId, player: this.player }));
+    },
+
+    clearSession() {
+        localStorage.removeItem('mafia_host_state');
+        localStorage.removeItem('mafia_player_session');
+        document.getElementById('reconnect-banner').classList.add('hidden');
+    },
+
+    checkForSavedSession() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('room')) {
+            document.getElementById('join-code').value = urlParams.get('room').toUpperCase();
+            return; // If joining via link, ignore saved sessions
+        }
+
+        const savedHost = localStorage.getItem('mafia_host_state');
+        const savedPlayer = localStorage.getItem('mafia_player_session');
+        
+        if (savedHost) {
+            document.getElementById('reconnect-banner').classList.remove('hidden');
+            document.getElementById('reconnect-text').innerText = "Recover Host Room?";
+        } else if (savedPlayer) {
+            const pd = JSON.parse(savedPlayer);
+            document.getElementById('reconnect-banner').classList.remove('hidden');
+            document.getElementById('reconnect-text').innerText = `Rejoin as ${pd.player.name}?`;
+        }
+    },
+
+    reconnectPlayer() {
+        document.getElementById('reconnect-banner').classList.add('hidden');
+        const savedHost = localStorage.getItem('mafia_host_state');
+        const savedPlayer = localStorage.getItem('mafia_player_session');
+
+        if (savedHost) {
+            const hd = JSON.parse(savedHost);
+            this.isHost = true;
+            this.roomId = hd.roomId;
+            this.gameState = hd.state;
+            this.connectMQTT('HOST_RECONNECT');
+        } else if (savedPlayer) {
+            const pd = JSON.parse(savedPlayer);
+            this.isHost = false;
+            this.roomId = pd.roomId;
+            this.myId = pd.myId;
+            this.player = pd.player;
+            this.connectMQTT('PLAYER_RECONNECT');
+        }
+    },
+
+    // --- CLOUD NETWORKING (MQTT) ---
     createRoom() {
+        const hName = document.getElementById('host-name').value.trim();
+        if(!hName) return alert("Please enter a Host Name!");
+        this.gameState.hostName = hName;
+        
         const btn = document.getElementById('btn-create');
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> CREATING...';
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> CONNECTING...';
         btn.disabled = true;
 
         this.isHost = true;
         this.roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
-        
-        this.peer = new Peer('gujmafia-' + this.roomId, peerConfig);
-        
-        this.peer.on('open', (id) => {
-            this.myId = id;
-            btn.innerHTML = '<i class="fa-solid fa-chess-board text-xl"></i> CREATE GAME BOARD';
-            btn.disabled = false;
-            
-            this.showScreen('screen-lobby');
-            document.getElementById('host-header').classList.remove('hidden');
-            document.getElementById('lobby-room-code').innerText = this.roomId;
-            document.getElementById('room-badge').classList.remove('hidden');
-            document.getElementById('display-room-code').innerText = this.roomId;
-            document.getElementById('host-lobby-controls').classList.remove('hidden');
-
-            const joinUrl = window.location.origin + window.location.pathname + '?room=' + this.roomId;
-            document.getElementById('qr-image').src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(joinUrl)}&bgcolor=ffffff&color=000000`;
-            document.getElementById('qr-image').classList.remove('hidden');
-        });
-
-        this.peer.on('error', () => { alert("Host Connection Error."); btn.disabled = false; });
-        this.peer.on('connection', (conn) => {
-            this.connections.push(conn);
-            conn.on('data', (data) => this.handleHostReceivesData(conn.peer, data));
-            conn.on('close', () => this.handlePlayerDrop(conn.peer));
-        });
+        this.connectMQTT('HOST_NEW', btn);
     },
 
-    // --- PLAYER NETWORKING ---
     joinRoom() {
         const name = document.getElementById('player-name').value.trim();
-        const persona = document.getElementById('player-persona').value;
         const code = document.getElementById('join-code').value.toUpperCase().trim(); 
         const btn = document.getElementById('btn-join');
 
@@ -193,66 +235,91 @@ const GameEngine = {
 
         this.isHost = false;
         this.roomId = code;
-        this.peer = new Peer(peerConfig); 
+        this.myId = 'P_' + Math.random().toString(36).substring(2, 9);
+        
+        this.player = {
+            id: this.myId, name: name, persona: document.getElementById('player-persona').value,
+            avatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${AvatarEngine.getSelectedSeed()}&backgroundColor=transparent`,
+            status: 'LOBBY', role: null, stats: { kills: 0, saves: 0, finds: 0, guesses: 0 }
+        };
 
-        this.peer.on('open', (id) => {
-            this.myId = id;
-            this.player = {
-                id: id, name: name, persona: persona,
-                avatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${selectedAvatarSeed}&backgroundColor=transparent`,
-                status: 'LOBBY', role: null, stats: { kills: 0, saves: 0, finds: 0, guesses: 0 }
-            };
+        this.connectMQTT('PLAYER_NEW', btn);
+    },
 
-            document.getElementById('header-brand').classList.add('hidden');
-            document.getElementById('header-player-profile').classList.remove('hidden');
-            document.getElementById('header-avatar').src = this.player.avatar;
-            document.getElementById('header-name').innerText = this.player.name;
-            document.getElementById('header-persona').innerText = this.player.persona !== 'Silent Observer' ? this.player.persona : '';
+    connectMQTT(mode, btnElement = null) {
+        // Connect to Free Public Enterprise MQTT Server (Bypasses Safari VPNs)
+        this.mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { reconnectPeriod: 3000 }); 
+        
+        this.mqttClient.on('connect', () => {
+            if (this.isHost) {
+                this.mqttClient.subscribe(`gujmafia/${this.roomId}/host`);
+                if(btnElement) { btnElement.innerHTML = '<i class="fa-solid fa-chess-board text-xl"></i> CREATE GAME BOARD'; btnElement.disabled = false; }
+                this.renderHostLobby();
+                this.saveHostState(); // Vault 1 Save
+            } else {
+                this.mqttClient.subscribe(`gujmafia/${this.roomId}/players`);
+                this.savePlayerSession();
+                
+                document.getElementById('header-brand').classList.add('hidden');
+                document.getElementById('header-player-profile').classList.remove('hidden');
+                document.getElementById('header-avatar').src = this.player.avatar;
+                document.getElementById('header-name').innerText = this.player.name;
+                document.getElementById('header-persona').innerText = this.player.persona !== 'Silent Observer' ? this.player.persona : '';
 
-            // Added reliable flag for mobile data stabilization
-            this.conn = this.peer.connect('gujmafia-' + this.roomId, { reliable: true });
-            
-            let timeout = setTimeout(() => { 
-                alert("Connection timed out. If you are on an iPhone, please disable 'Hide IP Address' in Safari settings, or use Chrome."); 
-                btn.innerHTML = 'JOIN'; 
-                btn.disabled = false; 
-                this.peer.destroy(); 
-            }, 15000);
-
-            this.conn.on('open', () => {
-                clearTimeout(timeout);
-                this.conn.send({ type: 'JOIN', data: this.player });
-                this.showScreen('screen-lobby');
-                document.getElementById('room-badge').classList.remove('hidden');
-                document.getElementById('display-room-code').innerText = this.roomId;
-            });
-
-            this.conn.on('data', (data) => this.handleClientReceivesData(data));
+                if (mode === 'PLAYER_NEW') {
+                    this.sendToHost({ type: 'JOIN', data: this.player });
+                    this.showScreen('screen-lobby');
+                    document.getElementById('room-badge').classList.remove('hidden');
+                    document.getElementById('display-room-code').innerText = this.roomId;
+                } else {
+                    // Force state pull if reconnecting
+                    this.sendToHost({ type: 'RECONNECT_PULL', data: this.player });
+                }
+            }
         });
 
-        this.peer.on('error', () => { alert("Room not found or connection blocked!"); btn.innerHTML = 'JOIN'; btn.disabled = false; });
+        this.mqttClient.on('message', (topic, message) => {
+            const payload = JSON.parse(message.toString());
+            if (this.isHost && topic === `gujmafia/${this.roomId}/host`) this.handleHostReceivesData(payload.peerId, payload.data);
+            if (!this.isHost && topic === `gujmafia/${this.roomId}/players`) this.handleClientReceivesData(payload);
+        });
+
+        this.mqttClient.on('error', () => { if(btnElement) { btnElement.innerHTML = 'JOIN'; btnElement.disabled = false; } });
+    },
+
+    sendToHost(msg) {
+        if(this.mqttClient) this.mqttClient.publish(`gujmafia/${this.roomId}/host`, JSON.stringify({ peerId: this.myId, data: msg }));
+    },
+
+    renderHostLobby() {
+        this.showScreen('screen-lobby');
+        document.getElementById('host-header').classList.remove('hidden');
+        document.getElementById('lobby-welcome-msg').innerText = `Welcome to ${this.gameState.hostName}'s Pol`;
+        document.getElementById('lobby-room-code').innerText = this.roomId;
+        document.getElementById('room-badge').classList.remove('hidden');
+        document.getElementById('display-room-code').innerText = this.roomId;
+        document.getElementById('host-lobby-controls').classList.remove('hidden');
+        const joinUrl = window.location.origin + window.location.pathname + '?room=' + this.roomId;
+        document.getElementById('qr-image').src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(joinUrl)}&bgcolor=ffffff&color=000000`;
+        document.getElementById('qr-image').classList.remove('hidden');
+        if(this.gameState.phase !== 'LOBBY') this.broadcastState(); // Sync reconnected host
     },
 
     // --- HOST LOGIC ENGINE ---
     handleHostReceivesData(peerId, msg) {
         if (msg.type === 'JOIN') { this.gameState.players[peerId] = msg.data; this.broadcastState(); }
+        if (msg.type === 'RECONNECT_PULL') { this.gameState.players[peerId] = msg.data; this.broadcastState(); } // Refresh the player's screen immediately
         if (msg.type === 'NIGHT_ACTION') { this.gameState.nightInputs[peerId] = msg.data; this.checkNightProgress(); }
         if (msg.type === 'VOTE_ACTION') { this.gameState.voteInputs[peerId] = msg.data; this.checkVoteProgress(); }
     },
 
     broadcastState(actionEvent = null) {
-        if(!this.isHost) return;
+        if(!this.isHost || !this.mqttClient) return;
+        this.saveHostState(); // Auto-save Vault 1
         const payload = { type: 'STATE_UPDATE', data: this.gameState, event: actionEvent };
-        this.connections.forEach(conn => conn.send(payload));
+        // Vault 2: Publish with RETAIN = TRUE so if late-joiners or refreshers connect, EMQX hands them this immediately
+        this.mqttClient.publish(`gujmafia/${this.roomId}/players`, JSON.stringify(payload), { retain: true });
         this.handleClientReceivesData(payload); 
-    },
-
-    handlePlayerDrop(peerId) {
-        if (this.gameState.players[peerId]) {
-            if(this.gameState.phase === 'LOBBY') delete this.gameState.players[peerId];
-            else this.gameState.players[peerId].status = 'DEAD'; 
-            this.broadcastState();
-        }
     },
 
     startGame() {
@@ -288,7 +355,7 @@ const GameEngine = {
     checkNightProgress() {
         const alivePlayers = Object.values(this.gameState.players).filter(p => p.status === 'ALIVE').length;
         if (Object.keys(this.gameState.nightInputs).length >= alivePlayers) this.processNightLogic();
-        else this.broadcastState(); // Refresh host screen list
+        else this.broadcastState(); 
     },
 
     processNightLogic() {
@@ -303,7 +370,6 @@ const GameEngine = {
             if (role === 'Villager') { vilInputs[peerId] = targetId; }
         });
 
-        // Kills & Saves
         if (mafiaTarget && mafiaTarget !== 'SKIP') {
             if (mafiaTarget === doctorSave) {
                 doctorIds.forEach(id => this.gameState.players[id].stats.saves++); 
@@ -317,7 +383,6 @@ const GameEngine = {
             this.gameState.lastKilledName = "NO ONE"; 
         }
 
-        // Detective finds & Villager guesses
         Object.entries(detInputs).forEach(([dId, tId]) => {
             if(tId !== 'SKIP' && this.gameState.players[tId] && this.gameState.players[tId].role === 'Mafia') this.gameState.players[dId].stats.finds++;
         });
@@ -451,7 +516,10 @@ const GameEngine = {
         if (msg.type !== 'STATE_UPDATE') return;
         this.gameState = msg.data;
         
-        // FAB visibility
+        // Ensure Room UI is synced (for reconnects)
+        document.getElementById('room-badge').classList.remove('hidden');
+        document.getElementById('display-room-code').innerText = this.roomId;
+        
         const fab = document.getElementById('fab-role-reveal');
         if(!this.isHost && ['NIGHT', 'DAY', 'VOTE'].includes(this.gameState.phase)) {
             fab.classList.remove('hidden');
@@ -482,6 +550,13 @@ const GameEngine = {
         const list = document.getElementById('player-list');
         list.innerHTML = '';
         let count = 0;
+        
+        if (!this.isHost) {
+             document.getElementById('lobby-welcome-msg').innerText = `Welcome to ${this.gameState.hostName}'s Pol`;
+             document.getElementById('host-header').classList.remove('hidden');
+             document.getElementById('qr-image').classList.add('hidden'); // Hide QR on player screen
+        }
+
         Object.values(this.gameState.players).forEach((p) => {
             count++;
             const li = document.createElement('li');
@@ -524,10 +599,10 @@ const GameEngine = {
 
         const myData = this.gameState.players[this.myId];
         
-        if (myData.status === 'DEAD' || this.gameState.nightInputs[this.myId]) {
+        if (!myData || myData.status === 'DEAD' || this.gameState.nightInputs[this.myId]) {
             actionPanel.classList.add('hidden');
             lockedPanel.classList.remove('hidden');
-            if (myData.status === 'DEAD') {
+            if (myData && myData.status === 'DEAD') {
                 lockedPanel.innerHTML = `<div class="text-6xl text-red-500 mb-6"><i class="fa-solid fa-skull"></i></div><h2 class="text-2xl font-black tracking-widest text-red-500">YOU ARE DEAD</h2><p class="text-gray-500 text-xs mt-2 uppercase tracking-widest font-bold">Spectating...</p>`;
             }
             return;
@@ -538,14 +613,11 @@ const GameEngine = {
         document.getElementById('btn-confirm-night').disabled = true;
         document.getElementById('btn-confirm-night').classList.add('opacity-50', 'cursor-not-allowed');
 
-        const mapRole = { 'Mafia': 'Mafia (Kaali Toli)', 'Doctor': 'Doctor (Vaidya)', 'Detective': 'Detective (Batmi-dar)', 'Villager': 'Villager (Gamwalo)' };
-        document.getElementById('secret-role-display').innerText = mapRole[myData.role] || myData.role;
-
         let aliveTargets = this.shuffleArray(Object.values(this.gameState.players).filter(p => p.status === 'ALIVE' && p.id !== this.myId));
 
         aliveTargets.forEach(p => {
             const li = document.createElement('li');
-            li.className = "list-item-btn p-4 border border-gray-600 rounded-xl cursor-pointer bg-gray-900 font-bold text-gray-300 text-lg shadow-sm";
+            li.className = "list-item-btn p-4 border border-gray-600 rounded-xl cursor-pointer bg-gray-900 font-bold text-gray-300 text-lg shadow-sm relative";
             li.innerText = p.name;
             li.onclick = () => {
                 document.querySelectorAll('#night-target-list .list-item-btn').forEach(el => el.classList.remove('selected'));
@@ -577,7 +649,7 @@ const GameEngine = {
         let popupHtml = '';
         let borderClass = 'border-gray-600';
         
-        // Small Discrete Popup implementation
+        // Stealth Flash Logic
         if (myData.role === 'Detective') {
             const isMafia = this.gameState.players[this.selectedTargetId].role === 'Mafia';
             const resultText = isMafia ? "MAFIA" : "VILLAGER";
@@ -599,7 +671,7 @@ const GameEngine = {
             popup.remove();
             document.getElementById('night-action-panel').classList.add('hidden');
             document.getElementById('night-locked-panel').classList.remove('hidden');
-            this.conn.send({ type: 'NIGHT_ACTION', data: this.selectedTargetId });
+            this.sendToHost({ type: 'NIGHT_ACTION', data: this.selectedTargetId });
         }, 2000);
     },
 
@@ -661,10 +733,10 @@ const GameEngine = {
 
         const myData = this.gameState.players[this.myId];
         
-        if (myData.status === 'DEAD' || this.gameState.voteInputs[this.myId]) {
+        if (!myData || myData.status === 'DEAD' || this.gameState.voteInputs[this.myId]) {
             actionPanel.classList.add('hidden');
             lockedPanel.classList.remove('hidden');
-            if (myData.status === 'DEAD') {
+            if (myData && myData.status === 'DEAD') {
                 lockedPanel.innerHTML = `<div class="text-6xl text-red-500 mb-6"><i class="fa-solid fa-skull"></i></div><h2 class="text-2xl font-black tracking-widest text-red-500">YOU ARE DEAD</h2><p class="text-gray-500 text-xs mt-2 uppercase tracking-widest font-bold">Spectating...</p>`;
             }
             return;
@@ -707,7 +779,7 @@ const GameEngine = {
         if (!this.selectedTargetId) return;
         document.getElementById('vote-action-panel').classList.add('hidden');
         document.getElementById('vote-locked-panel').classList.remove('hidden');
-        this.conn.send({ type: 'VOTE_ACTION', data: this.selectedTargetId });
+        this.sendToHost({ type: 'VOTE_ACTION', data: this.selectedTargetId });
     },
 
     renderResult() {
